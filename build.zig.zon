@@ -128,9 +128,53 @@
             .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.368.tar.gz",
             .hash = "N-V-__8AAGrcigJk__pPsEdMgID-QhKWYAi-MHHn3sn5HOI6",
         },
+        .libjxl = .{
+            .url = "https://github.com/libjxl/libjxl/archive/refs/tags/v0.13.0.tar.gz",
+            .hash = "N-V-__8AABLhZgAIs57NSpPgvFgglWeyUGBHyqgdt1LG-aIF",
+        },
+        .highway = .{
+            .url = "https://github.com/google/highway/archive/refs/tags/1.4.0.tar.gz",
+            .hash = "N-V-__8AAD_MkACxo3rELIYCI7ap_7GsxHN1WH6AsMLDYp6L",
+        },
+        .brotli = .{
+            .url = "https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz",
+            .hash = "N-V-__8AAHajKgD1oXsbBWLJka_y0ZSKZnQaTc6L-KURx6-j",
+        },
+        .skcms = .{
+            .url = "git+https://github.com/google/skcms#96d9171c94b937a1b5f0293de7309ac16311b722",
+            .hash = "N-V-__8AAMdC4ACP-Vg1vuqud-dvBe7V9K41yJpvjhzlICXu",
+        },
+        .speex = .{
+            .url = "https://downloads.xiph.org/releases/speex/speex-1.2.1.tar.gz",
+            .hash = "N-V-__8AABvVNACiMt2Ksl5U25kCVaMgJsQaZe-QrajaitVN",
+        },
+        .twolame = .{
+            .url = "https://github.com/njh/twolame/releases/download/0.4.0/twolame-0.4.0.tar.gz",
+            .hash = "N-V-__8AAC2BLgDMSqyJHNJcqJm4t2Mz8RNKjhgYtZvCKuDu",
+        },
+        .snappy = .{
+            .url = "https://github.com/google/snappy/archive/refs/tags/1.3.1.tar.gz",
+            .hash = "N-V-__8AABSJMwBOXGG9fyC5Qh-ckIPIwe9UxsdUveKkzezo",
+        },
+        .libgsm = .{
+            .url = "https://deb.debian.org/debian/pool/main/libg/libgsm/libgsm_1.0.24.orig.tar.gz",
+            .hash = "N-V-__8AADOsBADIXaoNDsdkRPL4uOZHUVwWmaeE_pyNuKNm",
+        },
         .amf = .{
             .url = "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v1.5.3/AMF-headers-v1.5.3.tar.gz",
             .hash = "N-V-__8AADxZCQDvLo4Arb3lHrkVpeyJuJiIW4vfBvuXUmrG",
+        },
+        .libxml2 = .{
+            .url = "https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.tar.xz",
+            .hash = "N-V-__8AAH30hwIndEJ9icgSaGo9HFSuUmIv1I6SlorjnfU-",
+        },
+        .vvenc = .{
+            .url = "https://github.com/fraunhoferhhi/vvenc/archive/refs/tags/v1.14.0.tar.gz",
+            .hash = "N-V-__8AAICVBQHrSz8n3LvU9uNON4qki54jPU_5txI217Ku",
+        },
+        .vvdec = .{
+            .url = "https://github.com/fraunhoferhhi/vvdec/archive/refs/tags/v3.2.1.tar.gz",
+            .hash = "N-V-__8AACIuxgB74FkVi32E_RF8spspbLVgRBm7g0nGjiB4",
         },
         .libvpl = .{
             .url = "https://github.com/intel/libvpl/archive/refs/tags/v2.17.0.tar.gz",
@@ -143,6 +187,25 @@
         .opencl_icd_loader = .{
             .url = "https://github.com/KhronosGroup/OpenCL-ICD-Loader/archive/refs/tags/v2026.05.29.tar.gz",
             .hash = "N-V-__8AAKkHDgClP0f2ooHf8q5_hsQh3y1JFUzxyh9wX_rK",
+        },
+        .libvmaf = .{
+            .url = "https://github.com/Netflix/vmaf/archive/refs/tags/v3.2.1.tar.gz",
+            .hash = "N-V-__8AAJU55AEgbP0gkS0AOPSNlOCVjEDHZcWtCLKCpAqe",
+        },
+        .vidstab = .{
+            .url = "https://github.com/georgmartius/vid.stab/archive/refs/tags/v1.1.2.tar.gz",
+            .hash = "N-V-__8AAJnxCgDGd2QtjJGODa_ur-CmwG6_1cBFGFfSNcar",
+            .lazy = true,
+        },
+        .rubberband = .{
+            .url = "https://github.com/breakfastquay/rubberband/archive/refs/tags/v4.0.0.tar.gz",
+            .hash = "N-V-__8AAIEQFwDLrAVqER8WMzYxQwikJPjMfsYRPTaJH8wB",
+            .lazy = true,
+        },
+        .xvidcore = .{
+            .url = "git+https://salsa.debian.org/multimedia-team/xvidcore.git#013c664be6dedfadcdbf82c1151f6bd9d173970b",
+            .hash = "N-V-__8AAIeOOADEJPs01Z2d8S5iHeCz8R-Zq3huW8jUn9Gb",
+            .lazy = true,
         },
     },
     .minimum_zig_version = "0.17.0",
