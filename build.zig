@@ -14,22 +14,26 @@ const Library = struct {
     linux_only: bool = false,
     /// Which windows-msvc targets upstream supports.
     msvc: enum { all, x86_64, none } = .all,
+    /// FFmpeg accepts this library in GPL builds only with --enable-version3 (`-Dversion3`).
+    gpl_needs_version3: bool = false,
+    /// configure names FFmpeg enables when this library is built (`--enable-<name>`).
+    ffmpeg: []const []const u8 = &.{},
 };
 
 const libraries = [_]Library{
-    .{ .name = "zlib", .build = @import("build/zlib.zig").build },
-    .{ .name = "opus", .build = @import("build/opus.zig").build },
-    .{ .name = "lame", .build = @import("build/lame.zig").build },
-    .{ .name = "kvazaar", .build = @import("build/kvazaar.zig").build },
-    .{ .name = "dav1d", .build = @import("build/dav1d.zig").build },
-    .{ .name = "openh264", .build = @import("build/openh264.zig").build },
-    .{ .name = "svt_av1", .build = @import("build/svt_av1.zig").build },
-    .{ .name = "libaom", .build = @import("build/libaom.zig").build },
-    .{ .name = "libvpx", .build = @import("build/libvpx.zig").build },
-    .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true },
-    .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true },
-    .{ .name = "libdrm", .build = @import("build/libdrm.zig").build, .linux_only = true },
-    .{ .name = "libva", .build = @import("build/libva.zig").build, .linux_only = true },
+    .{ .name = "zlib", .build = @import("build/zlib.zig").build, .ffmpeg = &.{"zlib"} },
+    .{ .name = "opus", .build = @import("build/opus.zig").build, .ffmpeg = &.{"libopus"} },
+    .{ .name = "lame", .build = @import("build/lame.zig").build, .ffmpeg = &.{"libmp3lame"} },
+    .{ .name = "kvazaar", .build = @import("build/kvazaar.zig").build, .ffmpeg = &.{"libkvazaar"} },
+    .{ .name = "dav1d", .build = @import("build/dav1d.zig").build, .ffmpeg = &.{"libdav1d"} },
+    .{ .name = "openh264", .build = @import("build/openh264.zig").build, .ffmpeg = &.{"libopenh264"} },
+    .{ .name = "svt_av1", .build = @import("build/svt_av1.zig").build, .ffmpeg = &.{"libsvtav1"} },
+    .{ .name = "libaom", .build = @import("build/libaom.zig").build, .ffmpeg = &.{"libaom"} },
+    .{ .name = "libvpx", .build = @import("build/libvpx.zig").build, .ffmpeg = &.{"libvpx"} },
+    .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true, .ffmpeg = &.{"libx264"} },
+    .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true, .ffmpeg = &.{"libx265"} },
+    .{ .name = "libdrm", .build = @import("build/libdrm.zig").build, .linux_only = true, .ffmpeg = &.{"libdrm"} },
+    .{ .name = "libva", .build = @import("build/libva.zig").build, .linux_only = true, .ffmpeg = &.{"vaapi"} },
 };
 
 fn find(name: []const u8) Library {
@@ -69,16 +73,21 @@ pub fn build(b: *std.Build) void {
     const nasm = Nasm.init(c);
     const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else true;
 
+    const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
     var deps: std.ArrayList(*std.Build.Step.Compile) = .empty;
     for (libraries) |lib| {
-        if (lib.gpl and !c.gpl) continue;
+        const wanted = b.option(bool, lib.name, b.fmt("Build {s} and enable it in FFmpeg (default: true)", .{lib.name})) orelse true;
+        if (!wanted or (lib.gpl and !c.gpl) or (lib.gpl_needs_version3 and c.gpl and !version3)) continue;
         if (lib.linux_only and c.os() != .linux) continue;
         if (c.isMsvc() and (lib.msvc == .none or (lib.msvc == .x86_64 and c.arch() != .x86_64))) continue;
         if (only) |name| if (!with_ffmpeg and !std.mem.eql(u8, name, lib.name)) continue;
         buildLibrary(c, nasm, lib, &deps);
     }
     if (with_ffmpeg) {
-        for (ffmpeg.build(c, nasm, deps.items)) |artifact| b.installArtifact(artifact);
+        var enabled: std.ArrayList([]const u8) = .empty;
+        for (libraries) |lib| if (c.built.contains(lib.name)) enabled.appendSlice(b.allocator, lib.ffmpeg) catch @panic("OOM");
+        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3 });
+        for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
     }
     c.applyLibc();
 }

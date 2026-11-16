@@ -8,6 +8,7 @@ prefix=$(realpath "${2:?prefix with lib/ and include/ from zig build}")
 bld=${3:?build dir}
 variant=${4:?lgpl or gpl}
 target=${5:-x86_64-linux-gnu.2.17}
+arch=${target%%-*}
 repo=$(cd "$(dirname "$0")/.." && pwd)
 nvh=${NV_CODEC_HEADERS:?set NV_CODEC_HEADERS to the nv-codec-headers source dir}
 
@@ -72,7 +73,7 @@ gpl=()
 cd "$bld"
 PATH=$bld/tools:$PATH PKG_CONFIG_LIBDIR=$bld/pkgconfig PKG_CONFIG_PATH='' "$src/configure" \
   --prefix=/ffoxide-ffmpeg --cc="$bld/tools/cc" --cxx="$bld/tools/c++" --ar="$bld/tools/ar" \
-  --ranlib="$bld/tools/ranlib" --arch=x86_64 --target-os=linux --enable-cross-compile \
+  --ranlib="$bld/tools/ranlib" --arch="$arch" --target-os=linux --enable-cross-compile \
   --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags="-I$prefix/include" --extra-ldflags="-L$prefix/lib" \
   --enable-static --disable-shared --enable-pic --disable-programs --disable-doc --disable-debug \
@@ -81,5 +82,5 @@ PATH=$bld/tools:$PATH PKG_CONFIG_LIBDIR=$bld/pkgconfig PKG_CONFIG_PATH='' "$src/
   --enable-libsvtav1 --enable-libmp3lame --enable-libvpx \
   --enable-ffnvcodec --enable-nvenc --enable-nvdec --enable-cuvid --enable-cuda-llvm --enable-vaapi --enable-libdrm \
   --x86asmexe="${NASM:-nasm}" --nvcc="${CLANG:-clang}" \
-  ${EXTRA_CONFIGURE:-} "${gpl[@]}"
+  "${gpl[@]}" ${EXTRA_CONFIGURE:-}
 echo "configured: $bld (repo $repo)"
