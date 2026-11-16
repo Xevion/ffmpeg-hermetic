@@ -5,6 +5,10 @@ const Ctx = @This();
 b: *std.Build,
 target: std.Build.ResolvedTarget,
 optimize: std.builtin.Optimize,
+/// Builds the GPL codecs (x264, x265) and FFmpeg's GPL configuration.
+gpl: bool = false,
+/// Omits debug info from every object.
+strip: ?bool = null,
 
 pub fn os(c: Ctx) std.Target.Os.Tag {
     return c.target.result.os.tag;
@@ -32,14 +36,16 @@ pub const ModuleOptions = struct {
     /// Extra CPU features, for sources upstream builds with `-msse4.1` and the like behind
     /// runtime dispatch. Zig takes features from the target, so per-file `-m` flags are ignored.
     x86_features: []const std.Target.x86.Feature = &.{},
+    aarch64_features: []const std.Target.aarch64.Feature = &.{},
 };
 
 /// A C (or C++) module for one static library.
 pub fn module(c: Ctx, opts: ModuleOptions) *std.Build.Module {
     var target = c.target;
-    if (opts.x86_features.len > 0) {
+    if (opts.x86_features.len > 0 or opts.aarch64_features.len > 0) {
         var q = c.target.query;
         for (opts.x86_features) |f| q.cpu_features_add.addFeature(@backingInt(f));
+        for (opts.aarch64_features) |f| q.cpu_features_add.addFeature(@backingInt(f));
         target = c.b.resolveTargetQuery(q);
     }
     return c.b.createModule(.{
@@ -48,6 +54,7 @@ pub fn module(c: Ctx, opts: ModuleOptions) *std.Build.Module {
         .link_libc = true,
         .link_libcpp = if (opts.cpp) true else null,
         .pic = true,
+        .strip = c.strip,
         // Upstream code relies on behavior UBSan traps on, and configure probes never see it.
         .sanitize_c = .off,
     });

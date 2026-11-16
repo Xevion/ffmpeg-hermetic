@@ -1,7 +1,8 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
+const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("zlib");
     const mod = c.module(.{});
     var flags: std.ArrayList([]const u8) = .empty;

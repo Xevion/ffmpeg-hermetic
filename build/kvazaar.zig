@@ -1,7 +1,8 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
+const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("kvazaar");
     const x86 = c.target.result.cpu.arch.isX86();
     const flags = [_][]const u8{ "-DCMAKE_BUILD", "-DKVZ_DLL_EXPORTS", "-DNDEBUG" };

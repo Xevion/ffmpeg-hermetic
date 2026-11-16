@@ -5,6 +5,7 @@ const Nasm = @import("build/Nasm.zig");
 const Library = struct {
     name: []const u8,
     build: *const fn (Ctx, Nasm) *std.Build.Step.Compile,
+    gpl: bool = false,
 };
 
 const libraries = [_]Library{
@@ -17,22 +18,24 @@ const libraries = [_]Library{
     .{ .name = "svt_av1", .build = @import("build/svt_av1.zig").build },
     .{ .name = "libaom", .build = @import("build/libaom.zig").build },
     .{ .name = "libvpx", .build = @import("build/libvpx.zig").build },
-    .{ .name = "x264", .build = @import("build/x264.zig").build },
-    .{ .name = "x265", .build = @import("build/x265.zig").build },
-    .{ .name = "libdrm", .build = @import("build/libdrm.zig").build },
-    .{ .name = "libva", .build = @import("build/libva.zig").build },
+    .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true },
+    .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true },
 };
 
 pub fn build(b: *std.Build) void {
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
     const c: Ctx = .{
         .b = b,
         .target = b.standardTargetOptions(.{}),
-        .optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast }),
+        .optimize = optimize,
+        .gpl = b.option(bool, "gpl", "Build x264 and x265") orelse false,
+        .strip = b.option(bool, "strip", "Omit debug info (default: on unless Debug)") orelse (optimize != .debug),
     };
     const only = b.option([]const u8, "only", "Build a single library (zlib, opus, dav1d, ...)");
     const nasm = Nasm.init(c);
 
     for (libraries) |lib| {
+        if (lib.gpl and !c.gpl) continue;
         if (only) |name| if (!std.mem.eql(u8, name, lib.name)) continue;
         b.installArtifact(lib.build(c, nasm));
     }

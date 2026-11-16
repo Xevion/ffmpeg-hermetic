@@ -1,10 +1,11 @@
 //! LAME's encoder only: the mpglib decoder and the frontend stay out, as in `--disable-decoder`.
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
+const Nasm = @import("Nasm.zig");
 
 const version = "3.100";
 
-pub fn build(c: Ctx) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("lame");
