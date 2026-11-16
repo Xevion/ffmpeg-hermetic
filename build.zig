@@ -2,6 +2,7 @@ const std = @import("std");
 const Ctx = @import("build/Ctx.zig");
 const Nasm = @import("build/Nasm.zig");
 const ffmpeg = @import("build/ffmpeg.zig");
+const bundle = @import("build/bundle.zig");
 
 const Library = struct {
     name: []const u8,
@@ -121,6 +122,7 @@ pub fn build(b: *std.Build) void {
         for (libraries) |lib| if (c.built.contains(lib.name)) enabled.appendSlice(b.allocator, lib.ffmpeg) catch @panic("OOM");
         const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3 });
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
+        bundle.add(c, deps.items, ffmpeg_libs);
     }
     c.applyLibc();
 }

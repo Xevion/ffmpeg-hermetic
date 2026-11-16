@@ -84,6 +84,11 @@
             .url = "https://github.com/webmproject/libwebp/archive/refs/tags/v1.6.0.tar.gz",
             .hash = "N-V-__8AAGkrewARcKiSyLfJKsaW0ZoqHh4hzi4mTGwekxjk",
         },
+        .zstd = .{
+            .url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
+            .hash = "N-V-__8AAPZ7fwAggnFm9t4Zu7VhQMY6UQlG9L0wwg9xjVsm",
+            .lazy = true,
+        },
         .openjpeg = .{
             .url = "https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.4.tar.gz",
             .hash = "N-V-__8AAHiEmgBjTa5rTtwbWMR9ZJJkN2_1NPJOZy6sURMC",
