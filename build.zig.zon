@@ -124,6 +124,26 @@
             .url = "https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz",
             .hash = "N-V-__8AABKeEghjdSPkvVWHCc8hob18MH3oUBR-e5mVm9TJ",
         },
+        .vulkan_headers = .{
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.368.tar.gz",
+            .hash = "N-V-__8AAGrcigJk__pPsEdMgID-QhKWYAi-MHHn3sn5HOI6",
+        },
+        .amf = .{
+            .url = "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/releases/download/v1.5.3/AMF-headers-v1.5.3.tar.gz",
+            .hash = "N-V-__8AADxZCQDvLo4Arb3lHrkVpeyJuJiIW4vfBvuXUmrG",
+        },
+        .libvpl = .{
+            .url = "https://github.com/intel/libvpl/archive/refs/tags/v2.17.0.tar.gz",
+            .hash = "N-V-__8AALpIowGIXifNXYUBRX1tZxn1qDHJiVPWIvpMhuI7",
+        },
+        .opencl_headers = .{
+            .url = "https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2026.05.29.tar.gz",
+            .hash = "N-V-__8AAEm0CAAEW33nP9aCUOvVMpgTvV3LxivhVTPQUD-T",
+        },
+        .opencl_icd_loader = .{
+            .url = "https://github.com/KhronosGroup/OpenCL-ICD-Loader/archive/refs/tags/v2026.05.29.tar.gz",
+            .hash = "N-V-__8AAKkHDgClP0f2ooHf8q5_hsQh3y1JFUzxyh9wX_rK",
+        },
     },
     .minimum_zig_version = "0.17.0",
     .paths = .{""},

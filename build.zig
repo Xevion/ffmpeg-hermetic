@@ -46,6 +46,11 @@ const libraries = [_]Library{
     .{ .name = "harfbuzz", .build = @import("build/harfbuzz.zig").build, .needs = &.{"freetype"} },
     .{ .name = "libass", .build = @import("build/libass.zig").build, .needs = &.{ "freetype", "fribidi", "harfbuzz" } },
     .{ .name = "openssl", .build_all = @import("build/openssl.zig").build, .linux_only = true, .gpl_needs_version3 = true, .ffmpeg = &.{"openssl"} },
+    .{ .name = "vulkan_headers", .build = @import("build/vulkan_headers.zig").build, .ffmpeg = &.{"vulkan"} },
+    .{ .name = "amf", .build = @import("build/amf.zig").build, .ffmpeg = &.{"amf"} },
+    .{ .name = "libvpl", .build = @import("build/libvpl.zig").build, .ffmpeg = &.{"libvpl"} },
+    .{ .name = "opencl_headers", .build = @import("build/opencl_headers.zig").build },
+    .{ .name = "opencl", .build = @import("build/opencl.zig").build, .needs = &.{"opencl_headers"}, .ffmpeg = &.{"opencl"} },
     .{ .name = "libdrm", .build = @import("build/libdrm.zig").build, .linux_only = true, .ffmpeg = &.{"libdrm"} },
     .{ .name = "libva", .build = @import("build/libva.zig").build, .linux_only = true, .ffmpeg = &.{"vaapi"} },
 };
