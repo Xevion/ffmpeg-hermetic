@@ -6,6 +6,7 @@ const Library = struct {
     name: []const u8,
     build: *const fn (Ctx, Nasm) *std.Build.Step.Compile,
     gpl: bool = false,
+    linux_only: bool = false,
 };
 
 const libraries = [_]Library{
@@ -20,6 +21,8 @@ const libraries = [_]Library{
     .{ .name = "libvpx", .build = @import("build/libvpx.zig").build },
     .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true },
     .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true },
+    .{ .name = "libdrm", .build = @import("build/libdrm.zig").build, .linux_only = true },
+    .{ .name = "libva", .build = @import("build/libva.zig").build, .linux_only = true },
 };
 
 pub fn build(b: *std.Build) void {
@@ -36,6 +39,7 @@ pub fn build(b: *std.Build) void {
 
     for (libraries) |lib| {
         if (lib.gpl and !c.gpl) continue;
+        if (lib.linux_only and c.os() != .linux) continue;
         if (only) |name| if (!std.mem.eql(u8, name, lib.name)) continue;
         b.installArtifact(lib.build(c, nasm));
     }
