@@ -120,6 +120,10 @@
             .url = "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz",
             .hash = "N-V-__8AAOifNQHeG8LWEk8vTKJvdEHXW0b89201Lv65Zcj1",
         },
+        .openssl = .{
+            .url = "https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz",
+            .hash = "N-V-__8AABKeEghjdSPkvVWHCc8hob18MH3oUBR-e5mVm9TJ",
+        },
     },
     .minimum_zig_version = "0.17.0",
     .paths = .{""},
