@@ -105,7 +105,7 @@ pub fn build(b: *std.Build) void {
     c.built.* = .empty;
     const only = b.option([]const u8, "only", "Build a single library (zlib, opus, dav1d, ..., ffmpeg)");
     const nasm = Nasm.init(c);
-    const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else true;
+    const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else b.option(bool, "ffmpeg", "Build FFmpeg on top of the libraries (default: true)") orelse true;
 
     const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
     var deps: std.ArrayList(*std.Build.Step.Compile) = .empty;
