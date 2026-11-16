@@ -12,17 +12,19 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("libvpx");
-    // Only x86_64 has its SIMD ported; every other target gets libvpx's generic C configuration.
+    // Only x86_64 and non-Windows aarch64 have their SIMD ported; every other target gets libvpx's
+    // generic C configuration.
     const x86_64 = t.cpu.arch == .x86_64;
+    const arm64 = t.cpu.arch == .aarch64 and !c.isWindows();
     const linux = c.os() == .linux;
-    const gen_dir = if (x86_64) "gen/libvpx/x86_64" else "gen/libvpx/generic";
+    const gen_dir = if (x86_64) "gen/libvpx/x86_64" else if (arm64) "gen/libvpx/arm64" else "gen/libvpx/generic";
 
-    const entries = configEntries(b, c, x86_64);
+    const entries = configEntries(b, c, x86_64, arm64);
     const generated = b.addWriteFiles();
     _ = generated.add("vpx_config.h", configHeader(b, entries));
     if (x86_64) _ = generated.add("vpx_config.asm", configAsm(b, entries));
     _ = generated.add("vpx_version.h", versionHeader(b));
-    const config_c = generated.add("vpx_config.c", configSource(b, t));
+    const config_c = generated.add("vpx_config.c", configSource(b, t, arm64));
 
     var flags: std.ArrayList([]const u8) = .empty;
     flags.append(b.allocator, "-DNDEBUG") catch @panic("OOM");
@@ -54,23 +56,39 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "vpx_avx2", .features = &.{.avx2}, .files = &avx2_c },
             .{ .name = "vpx_avx512", .features = &.{ .avx512f, .avx512cd, .avx512bw, .avx512dq, .avx512vl }, .files = &avx512_c },
         };
-        // COFF cannot merge several C files into one object, so those targets get one object per file.
-        const per_file = t.ofmt == .coff;
         for (isas) |isa| {
-            for (0..if (per_file) isa.files.len else 1) |i| {
-                const files = if (per_file) isa.files[i .. i + 1] else isa.files;
-                const m = c.module(.{ .x86_features = isa.features });
-                setup(m, src, generated, rtcd);
-                m.addCSourceFiles(.{ .root = src.path(""), .files = files, .flags = flags.items });
-                c.addObjectTo(mod, if (per_file) b.fmt("{s}_{d}", .{ isa.name, i }) else isa.name, m);
-            }
+            c.addObjectsTo(mod, isa.name, .{
+                .module = .{ .x86_features = isa.features },
+                .root = src.path(""),
+                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
+            }, setup, .{ src, generated, rtcd });
         }
 
         nasm.addFiles(c, mod, .{
             .root = src.path(""),
-            .files = &x86_64_asm,
+            // Without GNU inline asm the x87 control word accessors are external asm.
+            .files = if (c.isMsvc()) &(x86_64_asm ++ [_][]const u8{"vpx_ports/float_control_word.asm"}) else &x86_64_asm,
             .include_dirs = &.{ generated.getDirectory(), src.path("") },
         });
+    }
+
+    if (arm64) {
+        // Same -march extensions libvpx's Makefile applies per file suffix.
+        mod.addCSourceFiles(.{ .root = src.path(""), .files = &(aarch64_c ++ aarch64_neon_c), .flags = flags.items });
+        const Isa = struct { name: []const u8, features: []const std.Target.aarch64.Feature, files: []const []const u8 };
+        const isas = [_]Isa{
+            .{ .name = "vpx_neon_dotprod", .features = &.{.dotprod}, .files = &aarch64_dotprod_c },
+            .{ .name = "vpx_neon_i8mm", .features = &.{ .dotprod, .i8mm }, .files = &aarch64_i8mm_c },
+            .{ .name = "vpx_sve", .features = &.{ .dotprod, .i8mm, .sve }, .files = &aarch64_sve_c },
+            .{ .name = "vpx_sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .files = &aarch64_sve2_c },
+        };
+        for (isas) |isa| {
+            c.addObjectsTo(mod, isa.name, .{
+                .module = .{ .aarch64_features = isa.features },
+                .root = src.path(""),
+                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
+            }, setup, .{ src, generated, rtcd });
+        }
     }
 
     const lib = c.staticLibrary("vpx", mod);
@@ -78,7 +96,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     return lib;
 }
 
-fn configEntries(b: *std.Build, c: Ctx, x86_64: bool) []const Entry {
+fn configEntries(b: *std.Build, c: Ctx, x86_64: bool, arm64: bool) []const Entry {
     const t = c.target.result;
     const windows = c.isWindows();
     var list: std.ArrayList(Entry) = .empty;
@@ -90,14 +108,16 @@ fn configEntries(b: *std.Build, c: Ctx, x86_64: bool) []const Entry {
     const a = b.allocator;
     const simd = [_][]const u8{ "MMX", "SSE", "SSE2", "SSE3", "SSSE3", "SSE4_1", "AVX", "AVX2", "AVX512" };
 
-    add(&list, a, "VPX_ARCH_ARM", false);
-    add(&list, a, "VPX_ARCH_AARCH64", false);
+    add(&list, a, "VPX_ARCH_ARM", arm64);
+    add(&list, a, "VPX_ARCH_AARCH64", arm64);
     add(&list, a, "VPX_ARCH_MIPS", false);
     add(&list, a, "VPX_ARCH_X86", false);
     add(&list, a, "VPX_ARCH_X86_64", x86_64);
     add(&list, a, "VPX_ARCH_PPC", false);
     add(&list, a, "VPX_ARCH_LOONGARCH", false);
-    for ([_][]const u8{ "HAVE_NEON_ASM", "HAVE_NEON", "HAVE_NEON_DOTPROD", "HAVE_NEON_I8MM", "HAVE_SVE", "HAVE_SVE2", "HAVE_MIPS32", "HAVE_DSPR2", "HAVE_MSA", "HAVE_MIPS64" }) |n| add(&list, a, n, false);
+    add(&list, a, "HAVE_NEON_ASM", false);
+    for ([_][]const u8{ "HAVE_NEON", "HAVE_NEON_DOTPROD", "HAVE_NEON_I8MM", "HAVE_SVE", "HAVE_SVE2" }) |n| add(&list, a, n, arm64);
+    for ([_][]const u8{ "HAVE_MIPS32", "HAVE_DSPR2", "HAVE_MSA", "HAVE_MIPS64" }) |n| add(&list, a, n, false);
     for (simd) |n| add(&list, a, b.fmt("HAVE_{s}", .{n}), x86_64);
     for ([_][]const u8{ "HAVE_VSX", "HAVE_MMI", "HAVE_LSX", "HAVE_LASX" }) |n| add(&list, a, n, false);
     add(&list, a, "HAVE_VPX_PORTS", true);
@@ -114,9 +134,10 @@ fn configEntries(b: *std.Build, c: Ctx, x86_64: bool) []const Entry {
     add(&list, a, "CONFIG_GPROF", false);
     add(&list, a, "CONFIG_GCOV", false);
     add(&list, a, "CONFIG_RVCT", false);
-    add(&list, a, "CONFIG_GCC", true);
-    add(&list, a, "CONFIG_MSVS", false);
-    add(&list, a, "CONFIG_PIC", true);
+    add(&list, a, "CONFIG_GCC", !c.isMsvc());
+    add(&list, a, "CONFIG_MSVS", c.isMsvc());
+    // configure leaves pic off unless the compiler defaults to PIE, which Windows toolchains do not.
+    add(&list, a, "CONFIG_PIC", !windows);
     add(&list, a, "CONFIG_BIG_ENDIAN", t.cpu.arch.endian() == .big);
     add(&list, a, "CONFIG_CODEC_SRCS", false);
     add(&list, a, "CONFIG_DEBUG_LIBS", false);
@@ -202,8 +223,13 @@ fn versionHeader(b: *std.Build) []const u8 {
     , .{ version_major, version_minor, version_patch, v, v });
 }
 
-fn configSource(b: *std.Build, t: std.Target) []const u8 {
-    const target_name = if (t.cpu.arch == .x86_64) b.fmt("x86_64-{s}-gcc", .{@tagName(t.os.tag)}) else "generic-gnu";
+fn configSource(b: *std.Build, t: std.Target, arm64: bool) []const u8 {
+    const target_name = if (t.cpu.arch == .x86_64)
+        b.fmt("x86_64-{s}-gcc", .{@tagName(t.os.tag)})
+    else if (arm64)
+        b.fmt("arm64-{s}-gcc", .{if (t.os.tag.isDarwin()) "darwin" else @tagName(t.os.tag)})
+    else
+        "generic-gnu";
     return b.fmt(
         \\#include "vpx/vpx_codec.h"
         \\static const char* const cfg = "--target={s}{s} --enable-runtime-cpu-detect --enable-pic --disable-shared --enable-static --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-install-bins --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth";
@@ -519,4 +545,124 @@ const x86_64_asm = [_][]const u8{
     "vpx_dsp/x86/vpx_subpixel_bilinear_sse2.asm",
     "vpx_dsp/x86/vpx_subpixel_bilinear_ssse3.asm",
     "vpx_ports/emms_mmx.asm",
+};
+
+const aarch64_neon_c = [_][]const u8{
+    "vp8/common/arm/loopfilter_arm.c",
+    "vp8/common/arm/neon/bilinearpredict_neon.c",
+    "vp8/common/arm/neon/copymem_neon.c",
+    "vp8/common/arm/neon/dc_only_idct_add_neon.c",
+    "vp8/common/arm/neon/dequant_idct_neon.c",
+    "vp8/common/arm/neon/dequantizeb_neon.c",
+    "vp8/common/arm/neon/idct_blk_neon.c",
+    "vp8/common/arm/neon/iwalsh_neon.c",
+    "vp8/common/arm/neon/loopfiltersimplehorizontaledge_neon.c",
+    "vp8/common/arm/neon/loopfiltersimpleverticaledge_neon.c",
+    "vp8/common/arm/neon/mbloopfilter_neon.c",
+    "vp8/common/arm/neon/shortidct4x4llm_neon.c",
+    "vp8/common/arm/neon/sixtappredict_neon.c",
+    "vp8/common/arm/neon/vp8_loopfilter_neon.c",
+    "vp8/encoder/arm/neon/denoising_neon.c",
+    "vp8/encoder/arm/neon/fastquantizeb_neon.c",
+    "vp8/encoder/arm/neon/shortfdct_neon.c",
+    "vp8/encoder/arm/neon/vp8_shortwalsh4x4_neon.c",
+    "vp9/common/arm/neon/vp9_highbd_iht16x16_add_neon.c",
+    "vp9/common/arm/neon/vp9_highbd_iht4x4_add_neon.c",
+    "vp9/common/arm/neon/vp9_highbd_iht8x8_add_neon.c",
+    "vp9/common/arm/neon/vp9_iht16x16_add_neon.c",
+    "vp9/common/arm/neon/vp9_iht4x4_add_neon.c",
+    "vp9/common/arm/neon/vp9_iht8x8_add_neon.c",
+    "vp9/encoder/arm/neon/vp9_dct_neon.c",
+    "vp9/encoder/arm/neon/vp9_diamond_search_sad_neon.c",
+    "vp9/encoder/arm/neon/vp9_error_neon.c",
+    "vp9/encoder/arm/neon/vp9_frame_scale_neon.c",
+    "vp9/encoder/arm/neon/vp9_highbd_error_neon.c",
+    "vp9/encoder/arm/neon/vp9_highbd_temporal_filter_neon.c",
+    "vp9/encoder/arm/neon/vp9_quantize_neon.c",
+    "vp9/encoder/arm/neon/vp9_temporal_filter_neon.c",
+    "vpx_dsp/arm/avg_neon.c",
+    "vpx_dsp/arm/avg_pred_neon.c",
+    "vpx_dsp/arm/fdct16x16_neon.c",
+    "vpx_dsp/arm/fdct32x32_neon.c",
+    "vpx_dsp/arm/fdct4x4_neon.c",
+    "vpx_dsp/arm/fdct8x8_neon.c",
+    "vpx_dsp/arm/fdct_partial_neon.c",
+    "vpx_dsp/arm/hadamard_neon.c",
+    "vpx_dsp/arm/highbd_avg_neon.c",
+    "vpx_dsp/arm/highbd_avg_pred_neon.c",
+    "vpx_dsp/arm/highbd_hadamard_neon.c",
+    "vpx_dsp/arm/highbd_idct16x16_add_neon.c",
+    "vpx_dsp/arm/highbd_idct32x32_1024_add_neon.c",
+    "vpx_dsp/arm/highbd_idct32x32_135_add_neon.c",
+    "vpx_dsp/arm/highbd_idct32x32_34_add_neon.c",
+    "vpx_dsp/arm/highbd_idct32x32_add_neon.c",
+    "vpx_dsp/arm/highbd_idct4x4_add_neon.c",
+    "vpx_dsp/arm/highbd_idct8x8_add_neon.c",
+    "vpx_dsp/arm/highbd_intrapred_neon.c",
+    "vpx_dsp/arm/highbd_loopfilter_neon.c",
+    "vpx_dsp/arm/highbd_quantize_neon.c",
+    "vpx_dsp/arm/highbd_sad4d_neon.c",
+    "vpx_dsp/arm/highbd_sad_neon.c",
+    "vpx_dsp/arm/highbd_sse_neon.c",
+    "vpx_dsp/arm/highbd_subpel_variance_neon.c",
+    "vpx_dsp/arm/highbd_variance_neon.c",
+    "vpx_dsp/arm/highbd_vpx_convolve8_neon.c",
+    "vpx_dsp/arm/highbd_vpx_convolve_avg_neon.c",
+    "vpx_dsp/arm/highbd_vpx_convolve_copy_neon.c",
+    "vpx_dsp/arm/idct16x16_1_add_neon.c",
+    "vpx_dsp/arm/idct16x16_add_neon.c",
+    "vpx_dsp/arm/idct32x32_135_add_neon.c",
+    "vpx_dsp/arm/idct32x32_1_add_neon.c",
+    "vpx_dsp/arm/idct32x32_34_add_neon.c",
+    "vpx_dsp/arm/idct32x32_add_neon.c",
+    "vpx_dsp/arm/idct4x4_1_add_neon.c",
+    "vpx_dsp/arm/idct4x4_add_neon.c",
+    "vpx_dsp/arm/idct8x8_1_add_neon.c",
+    "vpx_dsp/arm/idct8x8_add_neon.c",
+    "vpx_dsp/arm/intrapred_neon.c",
+    "vpx_dsp/arm/loopfilter_neon.c",
+    "vpx_dsp/arm/quantize_neon.c",
+    "vpx_dsp/arm/sad4d_neon.c",
+    "vpx_dsp/arm/sad_neon.c",
+    "vpx_dsp/arm/sse_neon.c",
+    "vpx_dsp/arm/subpel_variance_neon.c",
+    "vpx_dsp/arm/subtract_neon.c",
+    "vpx_dsp/arm/sum_squares_neon.c",
+    "vpx_dsp/arm/variance_neon.c",
+    "vpx_dsp/arm/vpx_convolve8_neon.c",
+    "vpx_dsp/arm/vpx_convolve_avg_neon.c",
+    "vpx_dsp/arm/vpx_convolve_copy_neon.c",
+    "vpx_dsp/arm/vpx_convolve_neon.c",
+    "vpx_dsp/arm/vpx_scaled_convolve8_neon.c",
+};
+
+const aarch64_dotprod_c = [_][]const u8{
+    "vp9/encoder/arm/neon/vp9_temporal_filter_neon_dotprod.c",
+    "vpx_dsp/arm/highbd_variance_neon_dotprod.c",
+    "vpx_dsp/arm/sad4d_neon_dotprod.c",
+    "vpx_dsp/arm/sad_neon_dotprod.c",
+    "vpx_dsp/arm/sse_neon_dotprod.c",
+    "vpx_dsp/arm/variance_neon_dotprod.c",
+    "vpx_dsp/arm/vpx_convolve8_neon_dotprod.c",
+};
+
+const aarch64_i8mm_c = [_][]const u8{
+    "vp9/encoder/arm/neon/vp9_temporal_filter_neon_i8mm.c",
+    "vpx_dsp/arm/vpx_convolve8_neon_i8mm.c",
+};
+
+const aarch64_sve_c = [_][]const u8{
+    "vp9/encoder/arm/neon/vp9_error_sve.c",
+    "vpx_dsp/arm/highbd_variance_sve.c",
+    "vpx_dsp/arm/highbd_vpx_convolve8_sve.c",
+    "vpx_dsp/arm/sum_squares_sve.c",
+};
+
+const aarch64_sve2_c = [_][]const u8{
+    "vp9/encoder/arm/neon/vp9_highbd_temporal_filter_sve2.c",
+    "vpx_dsp/arm/highbd_vpx_convolve8_sve2.c",
+};
+
+const aarch64_c = [_][]const u8{
+    "vpx_ports/aarch64_cpudetect.c",
 };

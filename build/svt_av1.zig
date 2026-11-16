@@ -9,6 +9,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("svt_av1");
     const x86_64 = c.arch() == .x86_64;
     const windows = c.isWindows();
+    const arm64 = c.arch() == .aarch64 and !windows;
 
     const generated = b.addWriteFiles();
     _ = generated.add("EbVersion.h", "#define SVT_AV1_CVS_VERSION \"" ++ version ++ "\"\n");
@@ -25,6 +26,18 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         "-fvisibility=hidden",
     }) catch @panic("OOM");
     if (x86_64) flags.appendSlice(b.allocator, &.{ "-DARCH_X86_64=1", "-DEN_AVX512_SUPPORT=1" }) catch @panic("OOM");
+    if (arm64) flags.appendSlice(b.allocator, &.{
+        "-DARCH_AARCH64=1",
+        "-DHAVE_NEON=1",
+        "-DHAVE_ARM_CRC32=1",
+        "-DHAVE_NEON_DOTPROD=1",
+        "-DHAVE_NEON_I8MM=1",
+        "-DHAVE_SVE=1",
+        "-DHAVE_SVE2=1",
+        "-fno-lax-vector-conversions",
+        // Keeps aarch64 bitstreams identical to x86's.
+        "-ffp-contract=off",
+    }) catch @panic("OOM");
     if (windows) flags.append(b.allocator, "-D_WIN32_WINNT=0x0601") catch @panic("OOM");
 
     const setup = struct {
@@ -41,6 +54,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
                 "Source/Lib/ASM_SSE4_1",
                 "Source/Lib/ASM_AVX2",
                 "Source/Lib/ASM_AVX512",
+                "Source/Lib/ASM_NEON",
+                "Source/Lib/ASM_NEON_DOTPROD",
+                "Source/Lib/ASM_NEON_I8MM",
+                "Source/Lib/ASM_SVE",
+                "Source/Lib/ASM_SVE2",
                 "third_party/fastfeat",
             }) |dir| m.addIncludePath(s.path(dir));
         }
@@ -63,10 +81,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "svt_av1_avx512", .features = &.{ .avx2, .avx512f, .avx512bw, .avx512dq, .avx512vl }, .files = &asm_avx512 },
         };
         for (isas) |isa| {
-            const m = c.module(.{ .x86_features = isa.features });
-            setup(m, src, generated);
-            m.addCSourceFiles(.{ .root = src.path(""), .files = isa.files, .flags = flags.items });
-            c.addObjectTo(mod, isa.name, m);
+            c.addObjectsTo(mod, isa.name, .{
+                .module = .{ .x86_features = isa.features },
+                .root = src.path(""),
+                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
+            }, setup, .{ src, generated });
         }
 
         nasm.addFiles(c, mod, .{
@@ -86,6 +105,24 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             },
             .flags = &.{ "-DARCH_X86_64=1", "-DEN_AVX512_SUPPORT=1", "-DEXCLUDE_HASH=0", "-DREPRODUCIBLE_BUILDS=1", if (windows) "-DWIN64" else "-DUNIX64" },
         });
+    }
+
+    if (arm64) {
+        const Isa = struct { name: []const u8, features: []const std.Target.aarch64.Feature, files: []const []const u8 };
+        const isas = [_]Isa{
+            .{ .name = "svt_av1_neon", .features = &.{}, .files = &aarch64_neon },
+            .{ .name = "svt_av1_neon_dotprod", .features = &.{.dotprod}, .files = &aarch64_dotprod },
+            .{ .name = "svt_av1_neon_i8mm", .features = &.{ .dotprod, .i8mm }, .files = &aarch64_i8mm },
+            .{ .name = "svt_av1_sve", .features = &.{ .dotprod, .i8mm, .sve }, .files = &aarch64_sve },
+            .{ .name = "svt_av1_sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .files = &aarch64_sve2 },
+        };
+        for (isas) |isa| {
+            c.addObjectsTo(mod, isa.name, .{
+                .module = .{ .aarch64_features = isa.features },
+                .root = src.path(""),
+                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
+            }, setup, .{ src, generated });
+        }
     }
 
     const lib = c.staticLibrary("SvtAv1Enc", mod);
@@ -376,4 +413,111 @@ const fastfeat = [_][]const u8{
     "third_party/fastfeat/fast.c",
     "third_party/fastfeat/fast_9.c",
     "third_party/fastfeat/nonmax.c",
+};
+
+const aarch64_neon = [_][]const u8{
+    "Source/Lib/ASM_NEON/aom_convolve8_neon.c",
+    "Source/Lib/ASM_NEON/aom_sum_squares_neon.c",
+    "Source/Lib/ASM_NEON/av1_inv_txfm_neon.c",
+    "Source/Lib/ASM_NEON/av1_k_means_neon.c",
+    "Source/Lib/ASM_NEON/av1_quantize_neon.c",
+    "Source/Lib/ASM_NEON/blend_a64_mask_neon.c",
+    "Source/Lib/ASM_NEON/block_error_neon.c",
+    "Source/Lib/ASM_NEON/cdef_block_neon.c",
+    "Source/Lib/ASM_NEON/cdef_filter_block_neon.c",
+    "Source/Lib/ASM_NEON/cdef_neon.c",
+    "Source/Lib/ASM_NEON/cfl_neon.c",
+    "Source/Lib/ASM_NEON/compound_convolve_neon.c",
+    "Source/Lib/ASM_NEON/compute_sad_neon.c",
+    "Source/Lib/ASM_NEON/convolve_neon.c",
+    "Source/Lib/ASM_NEON/convolve_scale_neon.c",
+    "Source/Lib/ASM_NEON/corner_match_neon.c",
+    "Source/Lib/ASM_NEON/dav1d_asm.S",
+    "Source/Lib/ASM_NEON/dav1d_util.S",
+    "Source/Lib/ASM_NEON/deblocking_filter_intrinsic_neon.c",
+    "Source/Lib/ASM_NEON/encodetxb_neon.c",
+    "Source/Lib/ASM_NEON/hadamard_path_neon.c",
+    "Source/Lib/ASM_NEON/highbd_blend_a64_mask_neon.c",
+    "Source/Lib/ASM_NEON/highbd_convolve_neon.c",
+    "Source/Lib/ASM_NEON/highbd_convolve_scale_neon.c",
+    "Source/Lib/ASM_NEON/highbd_fwd_txfm_neon.c",
+    "Source/Lib/ASM_NEON/highbd_inter_prediction_neon.c",
+    "Source/Lib/ASM_NEON/highbd_intra_prediction_neon.c",
+    "Source/Lib/ASM_NEON/highbd_inv_txfm_neon.c",
+    "Source/Lib/ASM_NEON/highbd_jnt_convolve_neon.c",
+    "Source/Lib/ASM_NEON/highbd_loopfilter_neon.c",
+    "Source/Lib/ASM_NEON/highbd_pickrst_neon.c",
+    "Source/Lib/ASM_NEON/highbd_quantize_neon.c",
+    "Source/Lib/ASM_NEON/highbd_sse_neon.c",
+    "Source/Lib/ASM_NEON/highbd_subtract_block_neon.c",
+    "Source/Lib/ASM_NEON/highbd_variance_neon.c",
+    "Source/Lib/ASM_NEON/highbd_warp_plane_neon.c",
+    "Source/Lib/ASM_NEON/highbd_wiener_convolve_neon.c",
+    "Source/Lib/ASM_NEON/inter_prediction_neon.c",
+    "Source/Lib/ASM_NEON/intra_prediction_neon.c",
+    "Source/Lib/ASM_NEON/itx.S",
+    "Source/Lib/ASM_NEON/obmc_sad_neon.c",
+    "Source/Lib/ASM_NEON/obmc_variance_neon.c",
+    "Source/Lib/ASM_NEON/pack_unpack_intrin_neon.c",
+    "Source/Lib/ASM_NEON/pic_analysis_neon.c",
+    "Source/Lib/ASM_NEON/pickrst_neon.c",
+    "Source/Lib/ASM_NEON/picture_operators_intrinsic_neon.c",
+    "Source/Lib/ASM_NEON/restoration_pick_neon.c",
+    "Source/Lib/ASM_NEON/sad_neon.c",
+    "Source/Lib/ASM_NEON/selfguided_neon.c",
+    "Source/Lib/ASM_NEON/sse_neon.c",
+    "Source/Lib/ASM_NEON/subtract_block_neon.c",
+    "Source/Lib/ASM_NEON/temporal_filtering_neon.c",
+    "Source/Lib/ASM_NEON/transforms_intrin_neon.c",
+    "Source/Lib/ASM_NEON/upsampled_pred_neon.c",
+    "Source/Lib/ASM_NEON/variance_neon.c",
+    "Source/Lib/ASM_NEON/warp_plane_neon.c",
+    "Source/Lib/ASM_NEON/wedge_utils_neon.c",
+    "Source/Lib/ASM_NEON/wiener_convolve_neon.c",
+};
+
+const aarch64_dotprod = [_][]const u8{
+    "Source/Lib/ASM_NEON_DOTPROD/aom_convolve8_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/cdef_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/compute_sad_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/convolve_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/convolve_scale_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/corner_match_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/highbd_variance_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/jnt_convolve_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/pic_analysis_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/sad_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/sse_neon_dotprod.c",
+    "Source/Lib/ASM_NEON_DOTPROD/variance_neon_dotprod.c",
+};
+
+const aarch64_i8mm = [_][]const u8{
+    "Source/Lib/ASM_NEON_I8MM/aom_convolve8_neon_i8mm.c",
+    "Source/Lib/ASM_NEON_I8MM/convolve_neon_i8mm.c",
+    "Source/Lib/ASM_NEON_I8MM/convolve_scale_neon_i8mm.c",
+    "Source/Lib/ASM_NEON_I8MM/jnt_convolve_neon_i8mm.c",
+    "Source/Lib/ASM_NEON_I8MM/warp_plane_neon_i8mm.c",
+};
+
+const aarch64_sve = [_][]const u8{
+    "Source/Lib/ASM_SVE/aom_sum_squares_sve.c",
+    "Source/Lib/ASM_SVE/block_error_sve.c",
+    "Source/Lib/ASM_SVE/cdef_sve.c",
+    "Source/Lib/ASM_SVE/compute_sad_sve.c",
+    "Source/Lib/ASM_SVE/corner_match_sve.c",
+    "Source/Lib/ASM_SVE/highbd_convolve_sve.c",
+    "Source/Lib/ASM_SVE/highbd_jnt_convolve_sve.c",
+    "Source/Lib/ASM_SVE/highbd_pickrst_sve.c",
+    "Source/Lib/ASM_SVE/highbd_sse_sve.c",
+    "Source/Lib/ASM_SVE/highbd_variance_sve.c",
+    "Source/Lib/ASM_SVE/highbd_warp_plane_sve.c",
+    "Source/Lib/ASM_SVE/pickrst_sve.c",
+    "Source/Lib/ASM_SVE/sad_sve.c",
+    "Source/Lib/ASM_SVE/warp_plane_sve.c",
+    "Source/Lib/ASM_SVE/wedge_utils_sve.c",
+};
+
+const aarch64_sve2 = [_][]const u8{
+    "Source/Lib/ASM_SVE2/highbd_convolve_sve2.c",
+    "Source/Lib/ASM_SVE2/highbd_jnt_convolve_sve2.c",
 };

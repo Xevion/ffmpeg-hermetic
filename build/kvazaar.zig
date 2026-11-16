@@ -5,7 +5,11 @@ const Nasm = @import("Nasm.zig");
 pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("kvazaar");
     const x86 = c.target.result.cpu.arch.isX86();
-    const flags = [_][]const u8{ "-DCMAKE_BUILD", "-DKVZ_DLL_EXPORTS", "-DNDEBUG" };
+    const msvc = c.isMsvc();
+    const flags: []const []const u8 = if (msvc)
+        &.{ "-DCMAKE_BUILD", "-DKVZ_DLL_EXPORTS", "-DNDEBUG", "-DWIN32_LEAN_AND_MEAN", "-DWIN32", "-DWIN64", "-D_USE_MATH_DEFINES" }
+    else
+        &.{ "-DCMAKE_BUILD", "-DKVZ_DLL_EXPORTS", "-DNDEBUG" };
 
     const generated = c.b.addWriteFiles();
     _ = generated.add("version.h",
@@ -19,23 +23,43 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         \\
     );
 
-    const add = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, gen: *std.Build.Step.WriteFile, files: []const []const u8) void {
+    const setup = struct {
+        fn f(m: *std.Build.Module, s: *std.Build.Dependency, gen: *std.Build.Step.WriteFile) void {
             m.addIncludePath(gen.getDirectory());
             for ([_][]const u8{ "src", "src/extras", "src/strategies" }) |dir| m.addIncludePath(s.path(dir));
-            m.addCSourceFiles(.{ .root = s.path(""), .files = files, .flags = &flags });
+            if (m.resolved_target.?.result.abi == .msvc) m.addIncludePath(s.path("src/threadwrapper/include"));
         }
     }.f;
 
     const mod = c.module(.{});
-    add(mod, src, generated, &lib_sources);
+    setup(mod, src, generated);
+    mod.addCSourceFiles(.{ .root = src.path(""), .files = &lib_sources, .flags = flags });
+    if (msvc) {
+        // MSVC has no pthreads, so upstream ships a wrapper over Win32 threads. It needs
+        // std::shared_mutex, and clang defaults to C++14 for msvc targets.
+        c.addObjectsTo(mod, "kvazaar_threadwrapper", .{
+            .module = .{ .cpp = true },
+            .root = src.path(""),
+            .groups = &.{.{
+                .files = &.{ "src/threadwrapper/src/pthread.cpp", "src/threadwrapper/src/semaphore.cpp" },
+                .flags = std.mem.concat(c.b.allocator, []const u8, &.{ flags, &.{"-std=c++17"} }) catch @panic("OOM"),
+            }},
+        }, setup, .{ src, generated });
+    }
     if (x86) {
-        const sse41 = c.module(.{ .x86_features = &.{.sse4_1} });
-        add(sse41, src, generated, &sse41_sources);
-        c.addObjectTo(mod, "kvazaar_sse41", sse41);
-        const avx2 = c.module(.{ .x86_features = &.{ .avx2, .bmi, .bmi2, .lzcnt, .popcnt } });
-        add(avx2, src, generated, &avx2_sources);
-        c.addObjectTo(mod, "kvazaar_avx2", avx2);
+        c.addObjectsTo(mod, "kvazaar_sse41", .{
+            .module = .{ .x86_features = &.{.sse4_1} },
+            .root = src.path(""),
+            .groups = &.{.{ .files = &sse41_sources, .flags = flags }},
+        }, setup, .{ src, generated });
+        c.addObjectsTo(mod, "kvazaar_avx2", .{
+            .module = .{ .x86_features = &.{ .avx2, .bmi, .bmi2, .lzcnt, .popcnt } },
+            .root = src.path(""),
+            .groups = &.{.{ .files = &avx2_sources, .flags = flags }},
+        }, setup, .{ src, generated });
+    } else {
+        // The strategy registries call the ISA registration functions unconditionally; off x86 these files compile to stubs.
+        mod.addCSourceFiles(.{ .root = src.path(""), .files = &(sse41_sources ++ avx2_sources), .flags = flags });
     }
 
     const lib = c.staticLibrary("kvazaar", mod);

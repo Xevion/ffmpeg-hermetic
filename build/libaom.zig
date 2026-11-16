@@ -111,26 +111,21 @@ const Isa = struct {
     flags: []const []const u8,
 
     fn add(isa: Isa, name: []const u8, features: Features, files: []const []const u8) void {
-        // COFF cannot merge several compiled files into one object, so Windows gets one object per file.
-        if (!isa.c.isWindows()) return isa.object(name, features, files);
-        for (files) |file| isa.object(isa.c.b.fmt("{s}_{s}", .{ name, std.fs.path.stem(file) }), features, &.{file});
+        isa.c.addObjectsTo(isa.into, isa.c.b.fmt("aom_{s}", .{name}), .{
+            .module = switch (features) {
+                .x86 => |f| .{ .x86_features = f },
+                .arm => |f| .{ .aarch64_features = f },
+            },
+            .root = isa.src.path(""),
+            .groups = &.{.{ .files = files, .flags = isa.flags }},
+        }, setup, .{ isa.generated, isa.src });
     }
 
-    fn object(isa: Isa, name: []const u8, features: Features, files: []const []const u8) void {
-        const m = switch (features) {
-            .x86 => |f| isa.c.module(.{ .x86_features = f }),
-            .arm => |f| aarch64Module(isa.c, f),
-        };
-        m.addIncludePath(isa.generated.getDirectory());
-        m.addIncludePath(isa.src.path(""));
-        m.addCSourceFiles(.{ .root = isa.src.path(""), .files = files, .flags = isa.flags });
-        isa.c.addObjectTo(isa.into, isa.c.b.fmt("aom_{s}", .{name}), m);
+    fn setup(m: *std.Build.Module, generated: *std.Build.Step.WriteFile, src: *std.Build.Dependency) void {
+        m.addIncludePath(generated.getDirectory());
+        m.addIncludePath(src.path(""));
     }
 };
-
-fn aarch64Module(c: Ctx, features: []const std.Target.aarch64.Feature) *std.Build.Module {
-    return c.module(.{ .aarch64_features = features });
-}
 
 const Entry = struct { []const u8, u8 };
 

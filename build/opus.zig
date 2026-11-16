@@ -7,6 +7,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("opus");
     const mod = c.module(.{});
     const x86 = c.arch() == .x86_64;
+    const arm64 = c.arch() == .aarch64 and !c.isWindows();
 
     const config = b.addConfigHeader(.{ .include_path = "config.h" }, .{
         .OPUS_BUILD = true,
@@ -17,7 +18,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         .ENABLE_HARDENING = 1,
         .DISABLE_DEBUG_FLOAT = 1,
         .CPU_INFO_BY_ASM = if (x86) @as(?i64, 1) else null,
-        .OPUS_HAVE_RTCD = if (x86) @as(?i64, 1) else null,
+        .OPUS_HAVE_RTCD = if (x86 or arm64) @as(?i64, 1) else null,
+        .OPUS_ARM_MAY_HAVE_NEON_INTR = if (arm64) @as(?i64, 1) else null,
+        .OPUS_ARM_MAY_HAVE_DOTPROD = if (arm64) @as(?i64, 1) else null,
+        .OPUS_ARM_PRESUME_NEON_INTR = if (arm64) @as(?i64, 1) else null,
+        .OPUS_ARM_PRESUME_AARCH64_NEON_INTR = if (arm64) @as(?i64, 1) else null,
         .OPUS_X86_MAY_HAVE_SSE = if (x86) @as(?i64, 1) else null,
         .OPUS_X86_MAY_HAVE_SSE2 = if (x86) @as(?i64, 1) else null,
         .OPUS_X86_MAY_HAVE_SSE4_1 = if (x86) @as(?i64, 1) else null,
@@ -27,26 +32,32 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         .PACKAGE_VERSION = "1.6.1",
     });
     const base = [_][]const u8{ "-DHAVE_CONFIG_H", "-D_FILE_OFFSET_BITS=64", "-fvisibility=hidden" };
-    const add = struct {
-        fn files(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader, list: []const []const u8) void {
+    const setup = struct {
+        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader) void {
             m.addConfigHeader(cfg);
             for ([_][]const u8{ "", "include", "celt", "silk", "silk/float", "silk/fixed", "dnn", "src" }) |dir| {
                 m.addIncludePath(s.path(dir));
             }
-            m.addCSourceFiles(.{ .root = s.path(""), .files = list, .flags = &base });
         }
-    }.files;
+    }.f;
 
-    add(mod, src, config, &(silk ++ silk_float ++ celt ++ opus));
+    setup(mod, src, config);
+    mod.addCSourceFiles(.{ .root = src.path(""), .files = &(silk ++ silk_float ++ celt ++ opus), .flags = &base });
     if (x86) {
-        add(mod, src, config, &x86_base);
-        const sse4_1 = c.module(.{ .x86_features = &.{.sse4_1} });
-        add(sse4_1, src, config, &x86_sse4_1);
-        c.addObjectTo(mod, "opus_sse4_1", sse4_1);
-        const avx2 = c.module(.{ .x86_features = &.{ .avx, .avx2, .fma } });
-        add(avx2, src, config, &x86_avx2);
-        c.addObjectTo(mod, "opus_avx2", avx2);
+        mod.addCSourceFiles(.{ .root = src.path(""), .files = &x86_base, .flags = &base });
+        c.addObjectsTo(mod, "opus_sse4_1", .{
+            .module = .{ .x86_features = &.{.sse4_1} },
+            .root = src.path(""),
+            .groups = &.{.{ .files = &x86_sse4_1, .flags = &base }},
+        }, setup, .{ src, config });
+        c.addObjectsTo(mod, "opus_avx2", .{
+            .module = .{ .x86_features = &.{ .avx, .avx2, .fma } },
+            .root = src.path(""),
+            .groups = &.{.{ .files = &x86_avx2, .flags = &base }},
+        }, setup, .{ src, config });
     }
+
+    if (arm64) mod.addCSourceFiles(.{ .root = src.path(""), .files = &arm64_sources, .flags = &base });
 
     const lib = c.staticLibrary("opus", mod);
     lib.installHeadersDirectory(src.path("include"), "opus", .{});
@@ -125,4 +136,10 @@ const x86_sse4_1 = [_][]const u8{
 const x86_avx2 = [_][]const u8{
     "silk/float/x86/inner_product_FLP_avx2.c", "silk/x86/NSQ_del_dec_avx2.c", "celt/x86/pitch_avx.c",
     "dnn/x86/nnet_avx2.c",
+};
+
+const arm64_sources = [_][]const u8{
+    "celt/arm/armcpu.c",                      "celt/arm/arm_celt_map.c",          "celt/arm/celt_neon_intr.c",
+    "celt/arm/pitch_neon_intr.c",             "silk/arm/arm_silk_map.c",          "silk/arm/biquad_alt_neon_intr.c",
+    "silk/arm/LPC_inv_pred_gain_neon_intr.c", "silk/arm/NSQ_del_dec_neon_intr.c", "silk/arm/NSQ_neon.c",
 };

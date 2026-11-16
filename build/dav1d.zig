@@ -10,15 +10,17 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const src = c.upstream("dav1d");
     const x86 = t.cpu.arch.isX86();
     const x86_64 = t.cpu.arch == .x86_64;
+    const aarch64 = t.cpu.arch == .aarch64;
     const linux = c.os() == .linux;
     const windows = c.isWindows();
     const darwin = t.os.tag.isDarwin();
     // C callers reach the asm through a leading underscore on these ABIs.
     const prefix = darwin or (windows and t.cpu.arch == .x86);
-    const asm_enabled = x86;
+    const arm_asm = aarch64 and !windows;
+    const asm_enabled = x86 or arm_asm;
 
     const config = b.addConfigHeader(.{ .include_path = "config.h" }, .{
-        .ARCH_AARCH64 = 0,
+        .ARCH_AARCH64 = b10(aarch64),
         .ARCH_ARM = 0,
         .ARCH_LOONGARCH = 0,
         .ARCH_LOONGARCH32 = 0,
@@ -37,38 +39,43 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         .ENDIANNESS_BIG = b10(t.cpu.arch.endian() == .big),
         .HAVE_ALIGNED_ALLOC = b10(!windows),
         .HAVE_ASM = b10(asm_enabled),
-        .HAVE_AS_ARCHEXT_DOTPROD_DIRECTIVE = 0,
-        .HAVE_AS_ARCHEXT_I8MM_DIRECTIVE = 0,
-        .HAVE_AS_ARCHEXT_SVE2_DIRECTIVE = 0,
-        .HAVE_AS_ARCHEXT_SVE_DIRECTIVE = 0,
-        .HAVE_AS_ARCH_DIRECTIVE = 0,
+        .HAVE_AS_ARCHEXT_DOTPROD_DIRECTIVE = b10(arm_asm),
+        .HAVE_AS_ARCHEXT_I8MM_DIRECTIVE = b10(arm_asm),
+        .HAVE_AS_ARCHEXT_SVE2_DIRECTIVE = b10(arm_asm),
+        .HAVE_AS_ARCHEXT_SVE_DIRECTIVE = b10(arm_asm),
+        .HAVE_AS_ARCH_DIRECTIVE = b10(arm_asm),
+        // clang's assembler has no .func/.endfunc.
         .HAVE_AS_FUNC = 0,
         .HAVE_C11_GENERIC = 1,
         .HAVE_CLOCK_GETTIME = b10(!windows),
-        .HAVE_DLSYM = b10(!windows),
-        .HAVE_DOTPROD = 0,
+        .HAVE_DLSYM = b10(linux),
+        .HAVE_DOTPROD = b10(arm_asm),
         .HAVE_ELF_AUX_INFO = 0,
-        .HAVE_GETAUXVAL = 0,
-        .HAVE_I8MM = 0,
+        .HAVE_GETAUXVAL = b10(arm_asm and linux),
+        .HAVE_I8MM = b10(arm_asm),
         .HAVE_IO_H = b10(windows),
         .HAVE_MEMALIGN = b10(linux),
         .HAVE_POSIX_MEMALIGN = b10(!windows),
         .HAVE_PTHREAD_GETAFFINITY_NP = b10(linux),
         .HAVE_PTHREAD_NP_H = 0,
         .HAVE_PTHREAD_SETAFFINITY_NP = b10(linux),
-        .HAVE_PTHREAD_SETNAME_NP = b10(linux),
+        .HAVE_PTHREAD_SETNAME_NP = b10(linux or darwin),
         .HAVE_PTHREAD_SET_NAME_NP = 0,
-        .HAVE_SVE = 0,
-        .HAVE_SVE2 = 0,
+        .HAVE_SVE = b10(arm_asm),
+        .HAVE_SVE2 = b10(arm_asm),
         .HAVE_SYS_TYPES_H = 1,
-        .HAVE_UNISTD_H = b10(!windows),
+        .HAVE_UNISTD_H = b10(!c.isMsvc()),
+        .PIC = if (arm_asm) @as(?i64, 3) else null,
         .PREFIX = if (prefix) @as(?i64, 1) else null,
         .TRIM_DSP_FUNCTIONS = 1,
-        ._WIN32_WINNT = if (windows) @as(?i64, 0x0601) else null,
         .UNICODE = if (windows) @as(?i64, 1) else null,
         ._UNICODE = if (windows) @as(?i64, 1) else null,
         ._CRT_DECLARE_NONSTDC_NAMES = if (windows) @as(?i64, 1) else null,
+        .__USE_MINGW_ANSI_STDIO = if (windows) @as(?i64, 1) else null,
     });
+
+    // sdkddkver.h pastes the value into a token, so it must stay hexadecimal.
+    if (windows) config.addIdent("_WIN32_WINNT", "0x0601");
 
     const generated = b.addWriteFiles();
     _ = generated.add("vcs_version.h", "#define DAV1D_VERSION \"" ++ version ++ "\"\n");
@@ -93,6 +100,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     var flags: std.ArrayList([]const u8) = .empty;
     flags.appendSlice(b.allocator, &.{ "-DNDEBUG", "-D_FILE_OFFSET_BITS=64", "-ffast-math", "-fomit-frame-pointer", "-fvisibility=hidden" }) catch @panic("OOM");
     if (linux) flags.append(b.allocator, "-D_GNU_SOURCE") catch @panic("OOM");
+    if (aarch64) flags.append(b.allocator, "-fno-align-functions") catch @panic("OOM");
 
     const setup = struct {
         fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader, gen: *std.Build.Step.WriteFile) void {
@@ -106,20 +114,25 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     setup(mod, src, config, generated);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &common, .flags = flags.items });
     if (x86) mod.addCSourceFiles(.{ .root = src.path(""), .files = &.{"src/x86/cpu.c"}, .flags = flags.items });
+    if (arm_asm) {
+        mod.addCSourceFiles(.{ .root = src.path(""), .files = &.{"src/arm/cpu.c"}, .flags = flags.items });
+        // Clang accepts every .arch level and extension directive dav1d probes for.
+        const as_flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{"-DAS_ARCH_LEVEL=armv8.6-a+crc"} }) catch @panic("OOM");
+        mod.addCSourceFiles(.{ .root = src.path(""), .files = &aarch64_asm, .flags = as_flags });
+    }
     if (windows) mod.addCSourceFiles(.{ .root = src.path(""), .files = &.{"src/win32/thread.c"}, .flags = flags.items });
 
     for ([_][]const u8{ "8", "16" }) |depth| {
-        const m = c.module(.{});
-        setup(m, src, config, generated);
-        m.addCSourceFiles(.{
+        c.addObjectsTo(mod, b.fmt("dav1d_bitdepth_{s}", .{depth}), .{
             .root = src.path(""),
-            .files = &bitdepth,
-            .flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{b.fmt("-DBITDEPTH={s}", .{depth})} }) catch @panic("OOM"),
-        });
-        c.addObjectTo(mod, b.fmt("dav1d_bitdepth_{s}", .{depth}), m);
+            .groups = &.{.{
+                .files = &bitdepth,
+                .flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{b.fmt("-DBITDEPTH={s}", .{depth})} }) catch @panic("OOM"),
+            }},
+        }, setup, .{ src, config, generated });
     }
 
-    if (asm_enabled) {
+    if (x86) {
         nasm.addFiles(c, mod, .{
             .root = src.path(""),
             .files = &x86_asm,
@@ -168,4 +181,12 @@ const x86_asm = [_][]const u8{
     "src/x86/looprestoration16_sse.asm", "src/x86/mc_avx2.asm",                "src/x86/mc_avx512.asm",
     "src/x86/mc_sse.asm",                "src/x86/mc16_avx2.asm",              "src/x86/mc16_avx512.asm",
     "src/x86/mc16_sse.asm",
+};
+
+const aarch64_asm = [_][]const u8{
+    "src/arm/64/itx.S",               "src/arm/64/looprestoration_common.S", "src/arm/64/msac.S",       "src/arm/64/refmvs.S",
+    "src/arm/64/cdef.S",              "src/arm/64/filmgrain.S",              "src/arm/64/ipred.S",      "src/arm/64/loopfilter.S",
+    "src/arm/64/looprestoration.S",   "src/arm/64/mc.S",                     "src/arm/64/mc_dotprod.S", "src/arm/64/cdef16.S",
+    "src/arm/64/filmgrain16.S",       "src/arm/64/ipred16.S",                "src/arm/64/itx16.S",      "src/arm/64/loopfilter16.S",
+    "src/arm/64/looprestoration16.S", "src/arm/64/mc16.S",                   "src/arm/64/mc16_sve.S",
 };

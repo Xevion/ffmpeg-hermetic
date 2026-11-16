@@ -9,6 +9,18 @@ optimize: std.builtin.Optimize,
 gpl: bool = false,
 /// Omits debug info from every object.
 strip: ?bool = null,
+/// Archives of the libraries built so far, by registry name.
+built: *Built,
+/// Directory of an xwin splat (MSVC CRT plus Windows SDK), for msvc targets off Windows.
+winsdk: ?[]const u8 = null,
+
+pub const Built = std.StringHashMapUnmanaged([]const *std.Build.Step.Compile);
+
+/// The main archive of an already built library, for linking or reading its installed headers.
+pub fn dep(c: Ctx, name: []const u8) *std.Build.Step.Compile {
+    const archives = c.built.get(name) orelse std.debug.panic("{s} is not built yet; list it in `needs`", .{name});
+    return archives[0];
+}
 
 pub fn os(c: Ctx) std.Target.Os.Tag {
     return c.target.result.os.tag;
@@ -48,21 +60,126 @@ pub fn module(c: Ctx, opts: ModuleOptions) *std.Build.Module {
         for (opts.aarch64_features) |f| q.cpu_features_add.addFeature(@backingInt(f));
         target = c.b.resolveTargetQuery(q);
     }
-    return c.b.createModule(.{
+    const m = c.b.createModule(.{
         .target = target,
         .optimize = c.optimize,
         .link_libc = true,
-        .link_libcpp = if (opts.cpp) true else null,
+        // msvc C++ uses the MSVC STL from the CRT include directory; zig cannot build libc++abi there.
+        .link_libcpp = if (opts.cpp and !c.isMsvc()) true else null,
         .pic = true,
         .strip = c.strip,
         // Upstream code relies on behavior UBSan traps on, and configure probes never see it.
         .sanitize_c = .off,
     });
+    if (c.isMsvc()) for ([_][]const u8{ "_CRT_SECURE_NO_WARNINGS", "_CRT_NONSTDC_NO_WARNINGS" }) |name| m.addCMacro(name, "1");
+    if (c.winsdk) |sdk| if (c.isMsvc()) for ([_][]const u8{ "um", "shared" }) |dir| {
+        m.addSystemIncludePath(.{ .cwd_relative = c.b.pathJoin(&.{ sdk, "sdk/include", dir }) });
+    };
+    return m;
 }
 
-/// Compiles `m` (typically an ISA module) to an object that becomes part of `into`.
+/// The directory name xwin uses for `arch` under crt/lib and sdk/lib.
+fn winsdkArch(arch_tag: std.Target.Cpu.Arch) []const u8 {
+    return switch (arch_tag) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        .x86 => "x86",
+        else => std.debug.panic("no xwin library directory for {s}", .{@tagName(arch_tag)}),
+    };
+}
+
+/// A libc description pointing at the xwin splat, for msvc targets when `winsdk` is set. Native
+/// Windows hosts leave `winsdk` unset and zig finds the installed MSVC and SDK itself.
+fn winsdkLibcFile(c: Ctx) ?std.Build.LazyPath {
+    if (!c.isMsvc()) return null;
+    const sdk = c.winsdk orelse {
+        if (c.b.graph.host.result.os.tag != .windows) std.process.fatal(
+            "msvc targets need an MSVC CRT and Windows SDK off Windows: pass -Dwinsdk=<xwin splat directory>",
+            .{},
+        );
+        return null;
+    };
+    const arch_dir = winsdkArch(c.arch());
+    const text = c.b.fmt(
+        \\include_dir={0s}/sdk/include/ucrt
+        \\sys_include_dir={0s}/crt/include
+        \\crt_dir={0s}/sdk/lib/ucrt/{1s}
+        \\msvc_lib_dir={0s}/crt/lib/{1s}
+        \\kernel32_lib_dir={0s}/sdk/lib/um/{1s}
+        \\cc_dir=
+        \\darwin_sdk_dir=
+        \\
+    , .{ sdk, arch_dir });
+    return c.b.addWriteFiles().add("msvc-libc.txt", text);
+}
+
+/// Gives every msvc-target compile step reachable from the install step the generated libc file.
+/// Run once, after all libraries are declared.
+pub fn applyLibc(c: Ctx) void {
+    const libc = c.winsdkLibcFile() orelse return;
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    stack.append(c.b.allocator, c.b.getInstallStep()) catch @panic("OOM");
+    while (stack.pop()) |step| {
+        if ((seen.getOrPut(c.b.allocator, step) catch @panic("OOM")).found_existing) continue;
+        if (step.cast(std.Build.Step.Compile)) |compile| {
+            if (compile.root_module.resolved_target) |resolved| {
+                const target = resolved.result;
+                if (target.os.tag == .windows and target.abi == .msvc) compile.setLibCFile(libc);
+            }
+            for (compile.getCompileDependencies(false)) |dep_compile| stack.append(c.b.allocator, &dep_compile.step) catch @panic("OOM");
+        }
+        stack.appendSlice(c.b.allocator, step.dependencies.items) catch @panic("OOM");
+    }
+}
+
+/// Compiles `m` to one object of `into`. Multi-file modules need `addObjectsTo` off ELF.
 pub fn addObjectTo(c: Ctx, into: *std.Build.Module, name: []const u8, m: *std.Build.Module) void {
     into.addObject(c.b.addObject(.{ .name = name, .root_module = m }));
+}
+
+/// Source files that share one set of compiler flags.
+pub const SourceGroup = struct {
+    files: []const []const u8,
+    flags: []const []const u8 = &.{},
+};
+
+pub const ObjectOptions = struct {
+    /// CPU features and language for the module the sources compile in.
+    module: ModuleOptions = .{},
+    root: std.Build.LazyPath,
+    groups: []const SourceGroup,
+};
+
+/// Compiles sources into objects of `into`: on ELF one object named `name` holding every file,
+/// elsewhere one object per file. COFF cannot merge compiled files into one object, and Mach-O
+/// merging turns hidden-visibility symbols local, so code in one merged object could not be
+/// called from another. `setup` is called as `setup(module, ...setup_args)` on each module to
+/// add include paths and headers.
+pub fn addObjectsTo(
+    c: Ctx,
+    into: *std.Build.Module,
+    name: []const u8,
+    opts: ObjectOptions,
+    comptime setup: anytype,
+    setup_args: anytype,
+) void {
+    if (c.target.result.ofmt == .elf) {
+        const m = c.module(opts.module);
+        @call(.auto, setup, .{m} ++ setup_args);
+        for (opts.groups) |g| m.addCSourceFiles(.{ .root = opts.root, .files = g.files, .flags = g.flags });
+        into.addObject(c.b.addObject(.{ .name = name, .root_module = m }));
+        return;
+    }
+    for (opts.groups) |g| for (g.files) |file| {
+        const m = c.module(opts.module);
+        @call(.auto, setup, .{m} ++ setup_args);
+        m.addCSourceFiles(.{ .root = opts.root, .files = &.{file}, .flags = g.flags });
+        const stem = file[0 .. file.len - std.fs.path.extension(file).len];
+        const object_name = c.b.fmt("{s}_{s}", .{ name, stem });
+        std.mem.replaceScalar(u8, object_name, '/', '_');
+        into.addObject(c.b.addObject(.{ .name = object_name, .root_module = m }));
+    };
 }
 
 pub fn staticLibrary(c: Ctx, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {

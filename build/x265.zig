@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-const version = "4.1";
+const version = "4.1+1-1d117be";
 const api_build = 215;
 
 const Depth = struct {
@@ -25,6 +25,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         return c.staticLibrary("x265", c.module(.{ .cpp = true }));
     const x86 = t.cpu.arch.isX86();
     const x86_64 = t.cpu.arch == .x86_64;
+    const arm64 = t.cpu.arch == .aarch64 and !c.isWindows();
     const windows = c.isWindows();
     const darwin = t.os.tag.isDarwin();
     // Win32 x86 and Mach-O asm symbols carry a leading underscore.
@@ -41,7 +42,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         const high = d.bits > 8;
         var flags: std.ArrayList([]const u8) = .empty;
         flags.appendSlice(b.allocator, &.{
-            "-std=gnu++98",
+            if (c.isMsvc()) "-std=c++14" else "-std=gnu++98",
             "-DNDEBUG",
             "-DHAVE_INT_TYPES_H=1",
             "-D__STDC_LIMIT_MACROS=1",
@@ -54,7 +55,19 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         }) catch @panic("OOM");
         if (x86) flags.appendSlice(b.allocator, &.{ "-DX265_ARCH_X86=1", "-DENABLE_ASSEMBLY=1", "-mstackrealign" }) catch @panic("OOM");
         if (x86_64) flags.append(b.allocator, "-DX86_64=1") catch @panic("OOM");
-        if (x86_64 and !windows) flags.append(b.allocator, "-DPIC") catch @panic("OOM");
+        if (arm64) flags.appendSlice(b.allocator, &.{
+            "-DX265_ARCH_ARM64=1",
+            "-DENABLE_ASSEMBLY=1",
+            "-DAARCH64_RUNTIME_CPU_DETECT=1",
+            "-DHAVE_NEON=1",
+            "-DHAVE_NEON_DOTPROD=1",
+            "-DHAVE_NEON_I8MM=1",
+            "-DHAVE_SVE=1",
+            "-DHAVE_SVE2=1",
+            "-DHAVE_SVE_BRIDGE=1",
+            "-flax-vector-conversions=none",
+        }) catch @panic("OOM");
+        if ((x86_64 and !windows) or arm64) flags.append(b.allocator, "-DPIC") catch @panic("OOM");
         if (darwin) flags.append(b.allocator, "-DMACOS=1") catch @panic("OOM");
         if (windows) flags.append(b.allocator, "-D_WIN32_WINNT=_WIN32_WINNT_WIN7") catch @panic("OOM");
         if (c.isMsvc()) flags.append(b.allocator, "-D_CRT_SECURE_NO_WARNINGS") catch @panic("OOM");
@@ -79,19 +92,42 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         if (x86) groups.append(b.allocator, .{ .files = &.{ "common/x86/asm-primitives.cpp", "common/vec/vec-primitives.cpp" }, .flags = flags.items }) catch @panic("OOM");
 
         const root = src.path("source");
-        // COFF cannot link several objects into one, so each source becomes its own object there.
-        if (windows) {
-            for (groups.items) |g| for (g.files) |file| {
-                const fm = c.module(.{ .cpp = true });
-                setup(fm, src, config);
-                fm.addCSourceFiles(.{ .root = root, .files = &.{file}, .flags = g.flags });
-                c.addObjectTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, std.fs.path.stem(file) }), fm);
+        c.addObjectsTo(mod, b.fmt("x265_{d}bit", .{d.bits}), .{
+            .module = .{ .cpp = true },
+            .root = root,
+            .groups = groups.items,
+        }, setup, .{ src, config });
+
+        if (arm64) {
+            const asm_flags = [_][]const u8{
+                b.fmt("-DHIGH_BIT_DEPTH={d}", .{@intFromBool(high)}),
+                b.fmt("-DBIT_DEPTH={d}", .{d.bits}),
+                b.fmt("-DX265_NS={s}", .{d.ns}),
             };
-        } else {
-            const m = c.module(.{ .cpp = true });
-            setup(m, src, config);
-            for (groups.items) |g| m.addCSourceFiles(.{ .root = root, .files = g.files, .flags = g.flags });
-            c.addObjectTo(mod, b.fmt("x265_{d}bit", .{d.bits}), m);
+            const Isa = struct {
+                name: []const u8,
+                features: []const std.Target.aarch64.Feature,
+                cpp: []const []const u8,
+                asm_files: []const []const u8,
+            };
+            // The same -march extensions upstream's CMake applies per source; the .S files select theirs with .arch.
+            const isas = [_]Isa{
+                .{ .name = "neon", .features = &.{}, .cpp = &aarch64_neon_cpp, .asm_files = &aarch64_neon_asm },
+                .{ .name = "dotprod", .features = &.{.dotprod}, .cpp = &.{"common/aarch64/filter-neon-dotprod.cpp"}, .asm_files = &aarch64_dotprod_asm },
+                .{ .name = "i8mm", .features = &.{ .dotprod, .i8mm }, .cpp = &.{"common/aarch64/filter-neon-i8mm.cpp"}, .asm_files = &.{} },
+                .{ .name = "sve", .features = &.{ .dotprod, .i8mm, .sve }, .cpp = &.{ "common/aarch64/sao-prim-sve.cpp", "common/aarch64/dct-prim-sve.cpp" }, .asm_files = &aarch64_sve_asm },
+                .{ .name = "sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .cpp = &.{"common/aarch64/sao-prim-sve2.cpp"}, .asm_files = &aarch64_sve2_asm },
+            };
+            for (isas) |isa| {
+                c.addObjectsTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, isa.name }), .{
+                    .module = .{ .cpp = true, .aarch64_features = isa.features },
+                    .root = root,
+                    .groups = &.{
+                        .{ .files = isa.cpp, .flags = flags.items },
+                        .{ .files = isa.asm_files, .flags = &asm_flags },
+                    },
+                }, setup, .{ src, config });
+            }
         }
 
         if (x86) {
@@ -101,10 +137,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
                 .{ .sse4_1, "common/vec/dct-sse41.cpp" },
             };
             for (isas) |isa| {
-                const im = c.module(.{ .cpp = true, .x86_features = &.{isa[0]} });
-                setup(im, src, config);
-                im.addCSourceFiles(.{ .root = root, .files = &.{isa[1]}, .flags = flags.items });
-                c.addObjectTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, @tagName(isa[0]) }), im);
+                c.addObjectsTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, @tagName(isa[0]) }), .{
+                    .module = .{ .cpp = true, .x86_features = &.{isa[0]} },
+                    .root = root,
+                    .groups = &.{.{ .files = &.{isa[1]}, .flags = flags.items }},
+                }, setup, .{ src, config });
             }
 
             var asm_flags: std.ArrayList([]const u8) = .empty;
@@ -137,10 +174,7 @@ fn setup(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.Co
     for ([_][]const u8{ "source", "source/common", "source/encoder" }) |dir| m.addIncludePath(s.path(dir));
 }
 
-const Group = struct {
-    files: []const []const u8,
-    flags: []const []const u8,
-};
+const Group = Ctx.SourceGroup;
 
 /// Object names carry the bit depth so the three sets never share an archive member name.
 fn addAsm(
@@ -204,4 +238,29 @@ const asm_8bit = [_][]const u8{
 const asm_high = [_][]const u8{
     "common/x86/sad16-a.asm",       "common/x86/intrapred16.asm",  "common/x86/v4-ipfilter16.asm",
     "common/x86/h4-ipfilter16.asm", "common/x86/h-ipfilter16.asm", "common/x86/ipfilter16.asm",
+};
+
+const aarch64_neon_cpp = [_][]const u8{
+    "common/aarch64/asm-primitives.cpp", "common/aarch64/pixel-prim.cpp",      "common/aarch64/filter-prim.cpp",
+    "common/aarch64/dct-prim.cpp",       "common/aarch64/loopfilter-prim.cpp", "common/aarch64/intrapred-prim.cpp",
+    "common/aarch64/arm64-utils.cpp",    "common/aarch64/sao-prim.cpp",
+};
+
+const aarch64_neon_asm = [_][]const u8{
+    "common/aarch64/asm.S",               "common/aarch64/mc-a.S",       "common/aarch64/mc-a-common.S",
+    "common/aarch64/sad-a.S",             "common/aarch64/pixel-util.S", "common/aarch64/pixel-util-common.S",
+    "common/aarch64/p2s.S",               "common/aarch64/p2s-common.S", "common/aarch64/blockcopy8.S",
+    "common/aarch64/blockcopy8-common.S", "common/aarch64/ssd-a.S",      "common/aarch64/ssd-a-common.S",
+    "common/aarch64/intrapred.S",         "common/aarch64/dct.S",
+};
+
+const aarch64_dotprod_asm = [_][]const u8{ "common/aarch64/sad-neon-dotprod.S", "common/aarch64/ssd-neon-dotprod.S" };
+
+const aarch64_sve_asm = [_][]const u8{
+    "common/aarch64/asm-sve.S", "common/aarch64/blockcopy8-sve.S",
+    "common/aarch64/p2s-sve.S", "common/aarch64/pixel-util-sve.S",
+};
+
+const aarch64_sve2_asm = [_][]const u8{
+    "common/aarch64/mc-a-sve2.S", "common/aarch64/pixel-util-sve2.S", "common/aarch64/ssd-a-sve2.S",
 };
