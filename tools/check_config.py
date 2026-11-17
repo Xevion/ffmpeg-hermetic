@@ -58,7 +58,7 @@ def main():
     bad = 0
     for root, _, files in os.walk(oracle):
         for f in sorted(files):
-            rel = os.path.relpath(os.path.join(root, f), oracle)
+            rel = os.path.relpath(os.path.join(root, f), oracle).replace(os.sep, "/")
             if rel not in HEADERS:
                 bad += compare_lines(computed, oracle, rel)
     for rel in ("config_components.asm", "config.asm"):
