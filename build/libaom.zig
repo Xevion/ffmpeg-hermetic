@@ -5,7 +5,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "libaom",
-    .version = "3.12.1",
+    .version = "3.15.3",
     .licenses = &.{ "LICENSE", "PATENTS" },
     .ffmpeg = &.{"libaom"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
@@ -53,7 +53,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     }
 
     var flags: std.ArrayList([]const u8) = .empty;
-    flags.appendSlice(b.allocator, &.{ "-DNDEBUG", "-std=c99", "-D_FILE_OFFSET_BITS=64", "-D_LARGEFILE_SOURCE" }) catch @panic("OOM");
+    flags.appendSlice(b.allocator, &.{ "-DNDEBUG", "-std=c11", "-D_FILE_OFFSET_BITS=64", "-D_LARGEFILE_SOURCE" }) catch @panic("OOM");
     if (windows) flags.appendSlice(b.allocator, &.{ "-D_WIN32_WINNT=0x0601", "-D_CRT_SECURE_NO_WARNINGS" }) catch @panic("OOM");
 
     const setup: Ctx.Setup = .{ .includes = &.{ generated.getDirectory(), src.path("") } };
@@ -179,6 +179,7 @@ fn configEntries(c: Ctx) []const Entry {
         .{ "CONFIG_GCC", 1 },
         .{ "CONFIG_GCOV", 0 },
         .{ "CONFIG_GPROF", 0 },
+        .{ "CONFIG_HIGHWAY", 0 },
         .{ "CONFIG_INSPECTION", 0 },
         .{ "CONFIG_INTERNAL_STATS", 0 },
         .{ "CONFIG_INTER_STATS_ONLY", 0 },
@@ -205,7 +206,6 @@ fn configEntries(c: Ctx) []const Entry {
         .{ "CONFIG_SHARED", 0 },
         .{ "CONFIG_SIZE_LIMIT", 0 },
         .{ "CONFIG_SPEED_STATS", 0 },
-        .{ "CONFIG_SVT_AV1", 1 },
         .{ "CONFIG_TFLITE", 0 },
         .{ "CONFIG_THREE_PASS", 0 },
         .{ "CONFIG_TUNE_BUTTERAUGLI", 0 },
@@ -217,12 +217,14 @@ fn configEntries(c: Ctx) []const Entry {
         .{ "HAVE_ARM_CRC32", b10(arm64) },
         .{ "HAVE_AVX", b10(x86) },
         .{ "HAVE_AVX2", b10(x86) },
+        .{ "HAVE_AVX512", b10(t.cpu.arch == .x86_64) },
         .{ "HAVE_FEXCEPT", b10(t.os.tag == .linux and t.abi.isGnu()) },
         .{ "HAVE_MMX", b10(x86) },
         .{ "HAVE_NEON", b10(arm64) },
         .{ "HAVE_NEON_DOTPROD", b10(arm64) },
         .{ "HAVE_NEON_I8MM", b10(arm64) },
         .{ "HAVE_PTHREAD_H", b10(!windows) },
+        .{ "HAVE_PTHREAD_SETNAME_NP", b10(!windows) },
         .{ "HAVE_RVV", 0 },
         .{ "HAVE_SSE", b10(x86) },
         .{ "HAVE_SSE2", b10(x86) },
@@ -261,6 +263,7 @@ fn configAsm(c: Ctx) []const u8 {
 const public_headers = [_][]const u8{
     "aom.h",              "aom_codec.h", "aom_decoder.h", "aom_encoder.h", "aom_external_partition.h",
     "aom_frame_buffer.h", "aom_image.h", "aom_integer.h", "aomcx.h",       "aomdx.h",
+    "aom_ext_ratectrl.h", "aom_tpl.h",
 };
 
 const x86_asm = [_][]const u8{
@@ -324,28 +327,29 @@ const common = [_][]const u8{
     "av1/decoder/decodemv.c",             "av1/decoder/decoder.c",                     "av1/decoder/decodetxb.c",
     "av1/decoder/detokenize.c",           "av1/decoder/grain_synthesis.c",             "av1/decoder/obu.c",
     "av1/encoder/allintra_vis.c",         "av1/encoder/aq_complexity.c",               "av1/encoder/aq_cyclicrefresh.c",
-    "av1/encoder/aq_variance.c",          "av1/encoder/av1_fwd_txfm1d.c",              "av1/encoder/av1_fwd_txfm2d.c",
-    "av1/encoder/av1_noise_estimate.c",   "av1/encoder/av1_quantize.c",                "av1/encoder/bitstream.c",
-    "av1/encoder/cnn.c",                  "av1/encoder/compound_type.c",               "av1/encoder/context_tree.c",
-    "av1/encoder/cost.c",                 "av1/encoder/dwt.c",                         "av1/encoder/encode_strategy.c",
-    "av1/encoder/encodeframe.c",          "av1/encoder/encodeframe_utils.c",           "av1/encoder/encodemb.c",
-    "av1/encoder/encodemv.c",             "av1/encoder/encoder.c",                     "av1/encoder/encoder_utils.c",
-    "av1/encoder/encodetxb.c",            "av1/encoder/ethread.c",                     "av1/encoder/extend.c",
-    "av1/encoder/external_partition.c",   "av1/encoder/firstpass.c",                   "av1/encoder/global_motion.c",
-    "av1/encoder/global_motion_facade.c", "av1/encoder/gop_structure.c",               "av1/encoder/hash.c",
-    "av1/encoder/hash_motion.c",          "av1/encoder/hybrid_fwd_txfm.c",             "av1/encoder/interp_search.c",
-    "av1/encoder/intra_mode_search.c",    "av1/encoder/level.c",                       "av1/encoder/lookahead.c",
-    "av1/encoder/mcomp.c",                "av1/encoder/ml.c",                          "av1/encoder/motion_search_facade.c",
-    "av1/encoder/mv_prec.c",              "av1/encoder/nonrd_opt.c",                   "av1/encoder/nonrd_pickmode.c",
-    "av1/encoder/palette.c",              "av1/encoder/partition_search.c",            "av1/encoder/partition_strategy.c",
-    "av1/encoder/pass2_strategy.c",       "av1/encoder/pickcdef.c",                    "av1/encoder/picklpf.c",
-    "av1/encoder/pickrst.c",              "av1/encoder/ratectrl.c",                    "av1/encoder/rd.c",
-    "av1/encoder/rdopt.c",                "av1/encoder/reconinter_enc.c",              "av1/encoder/segmentation.c",
-    "av1/encoder/speed_features.c",       "av1/encoder/superres_scale.c",              "av1/encoder/svc_layercontext.c",
-    "av1/encoder/temporal_filter.c",      "av1/encoder/tokenize.c",                    "av1/encoder/tpl_model.c",
-    "av1/encoder/tx_search.c",            "av1/encoder/txb_rdopt.c",                   "av1/encoder/var_based_part.c",
-    "av1/encoder/wedge_utils.c",          "common/args_helper.c",                      "third_party/fastfeat/fast.c",
-    "third_party/fastfeat/fast_9.c",      "third_party/fastfeat/nonmax.c",             "third_party/vector/vector.c",
+    "av1/encoder/aq_variance.c",          "av1/encoder/av1_ext_ratectrl.c",            "av1/encoder/av1_fwd_txfm1d.c",
+    "av1/encoder/av1_fwd_txfm2d.c",       "av1/encoder/av1_noise_estimate.c",          "av1/encoder/av1_quantize.c",
+    "av1/encoder/bitstream.c",            "av1/encoder/cnn.c",                         "av1/encoder/compound_type.c",
+    "av1/encoder/context_tree.c",         "av1/encoder/cost.c",                        "av1/encoder/dwt.c",
+    "av1/encoder/encode_strategy.c",      "av1/encoder/encodeframe.c",                 "av1/encoder/encodeframe_utils.c",
+    "av1/encoder/encodemb.c",             "av1/encoder/encodemv.c",                    "av1/encoder/encoder.c",
+    "av1/encoder/encoder_utils.c",        "av1/encoder/encodetxb.c",                   "av1/encoder/ethread.c",
+    "av1/encoder/extend.c",               "av1/encoder/external_partition.c",          "av1/encoder/firstpass.c",
+    "av1/encoder/global_motion.c",        "av1/encoder/global_motion_facade.c",        "av1/encoder/gop_structure.c",
+    "av1/encoder/hash.c",                 "av1/encoder/hash_motion.c",                 "av1/encoder/hybrid_fwd_txfm.c",
+    "av1/encoder/interp_search.c",        "av1/encoder/intra_mode_search.c",           "av1/encoder/level.c",
+    "av1/encoder/lookahead.c",            "av1/encoder/mcomp.c",                       "av1/encoder/ml.c",
+    "av1/encoder/motion_search_facade.c", "av1/encoder/mv_prec.c",                     "av1/encoder/nonrd_opt.c",
+    "av1/encoder/nonrd_pickmode.c",       "av1/encoder/palette.c",                     "av1/encoder/partition_search.c",
+    "av1/encoder/partition_strategy.c",   "av1/encoder/pass2_strategy.c",              "av1/encoder/pickcdef.c",
+    "av1/encoder/picklpf.c",              "av1/encoder/pickrst.c",                     "av1/encoder/ratectrl.c",
+    "av1/encoder/rd.c",                   "av1/encoder/rdopt.c",                       "av1/encoder/reconinter_enc.c",
+    "av1/encoder/segmentation.c",         "av1/encoder/speed_features.c",              "av1/encoder/superres_scale.c",
+    "av1/encoder/svc_layercontext.c",     "av1/encoder/temporal_filter.c",             "av1/encoder/tokenize.c",
+    "av1/encoder/tpl_model.c",            "av1/encoder/tx_search.c",                   "av1/encoder/txb_rdopt.c",
+    "av1/encoder/var_based_part.c",       "av1/encoder/wedge_utils.c",                 "common/args_helper.c",
+    "third_party/fastfeat/fast.c",        "third_party/fastfeat/fast_9.c",             "third_party/fastfeat/nonmax.c",
+    "third_party/vector/vector.c",
 };
 
 const sse2_files = [_][]const u8{
@@ -359,8 +363,8 @@ const sse2_files = [_][]const u8{
     "av1/common/x86/jnt_convolve_sse2.c",            "av1/common/x86/resize_sse2.c",              "av1/common/x86/wiener_convolve_sse2.c",
     "av1/encoder/x86/av1_fwd_txfm_sse2.c",           "av1/encoder/x86/av1_k_means_sse2.c",        "av1/encoder/x86/av1_quantize_sse2.c",
     "av1/encoder/x86/encodetxb_sse2.c",              "av1/encoder/x86/error_intrin_sse2.c",       "av1/encoder/x86/highbd_block_error_intrin_sse2.c",
-    "av1/encoder/x86/highbd_temporal_filter_sse2.c", "av1/encoder/x86/reconinter_enc_sse2.c",     "av1/encoder/x86/temporal_filter_sse2.c",
-    "av1/encoder/x86/wedge_utils_sse2.c",
+    "av1/encoder/x86/highbd_temporal_filter_sse2.c", "av1/encoder/x86/model_rd_sse2.c",           "av1/encoder/x86/reconinter_enc_sse2.c",
+    "av1/encoder/x86/temporal_filter_sse2.c",        "av1/encoder/x86/wedge_utils_sse2.c",
 };
 
 const sse3_files = [_][]const u8{
@@ -452,17 +456,17 @@ const aarch64_files = [_][]const u8{
 };
 
 const dotprod_files = [_][]const u8{
-    "aom_dsp/arm/aom_convolve8_neon_dotprod.c",        "aom_dsp/arm/aom_scaled_convolve8_neon_dotprod.c", "aom_dsp/arm/highbd_variance_neon_dotprod.c",
-    "aom_dsp/arm/sad_neon_dotprod.c",                  "aom_dsp/arm/sadxd_neon_dotprod.c",                "aom_dsp/arm/sse_neon_dotprod.c",
-    "aom_dsp/arm/sum_squares_neon_dotprod.c",          "aom_dsp/arm/variance_neon_dotprod.c",             "av1/common/arm/av1_convolve_scale_neon_dotprod.c",
-    "av1/common/arm/compound_convolve_neon_dotprod.c", "av1/common/arm/convolve_neon_dotprod.c",          "av1/common/arm/resize_neon_dotprod.c",
-    "av1/encoder/arm/temporal_filter_neon_dotprod.c",
+    "aom_dsp/arm/aom_convolve8_neon_dotprod.c",         "aom_dsp/arm/aom_scaled_convolve8_neon_dotprod.c", "aom_dsp/arm/highbd_variance_neon_dotprod.c",
+    "aom_dsp/arm/sad_neon_dotprod.c",                   "aom_dsp/arm/sadxd_neon_dotprod.c",                "aom_dsp/arm/sse_neon_dotprod.c",
+    "aom_dsp/arm/subpel_variance_neon_dotprod.c",       "aom_dsp/arm/sum_squares_neon_dotprod.c",          "aom_dsp/arm/variance_neon_dotprod.c",
+    "av1/common/arm/av1_convolve_scale_neon_dotprod.c", "av1/common/arm/compound_convolve_neon_dotprod.c", "av1/common/arm/convolve_neon_dotprod.c",
+    "av1/common/arm/resize_neon_dotprod.c",             "av1/encoder/arm/temporal_filter_neon_dotprod.c",
 };
 
 const i8mm_files = [_][]const u8{
     "aom_dsp/arm/aom_convolve8_neon_i8mm.c",        "aom_dsp/arm/aom_scaled_convolve8_neon_i8mm.c", "av1/common/arm/av1_convolve_scale_neon_i8mm.c",
     "av1/common/arm/compound_convolve_neon_i8mm.c", "av1/common/arm/convolve_neon_i8mm.c",          "av1/common/arm/resize_neon_i8mm.c",
-    "av1/common/arm/warp_plane_neon_i8mm.c",
+    "av1/common/arm/warp_plane_neon_i8mm.c",        "av1/common/arm/reconintra_neon_i8mm.c",
 };
 
 const sve_files = [_][]const u8{
