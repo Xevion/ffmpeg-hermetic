@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libaom",
+    .version = "3.12.1",
+    .licenses = &.{ "LICENSE", "PATENTS" },
+    .ffmpeg = &.{"libaom"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
@@ -21,20 +30,21 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         \\const char *aom_codec_build_config(void) {return cfg;}
         \\
     );
-    _ = generated.add("config/aom_version.h",
+    const ver = Meta.versionParts(meta.version);
+    _ = generated.add("config/aom_version.h", b.fmt(
         \\#ifndef AOM_VERSION_H_
         \\#define AOM_VERSION_H_
-        \\#define VERSION_MAJOR 3
-        \\#define VERSION_MINOR 12
-        \\#define VERSION_PATCH 1
+        \\#define VERSION_MAJOR {d}
+        \\#define VERSION_MINOR {d}
+        \\#define VERSION_PATCH {d}
         \\#define VERSION_EXTRA ""
         \\#define VERSION_PACKED \
         \\  ((VERSION_MAJOR << 16) | (VERSION_MINOR << 8) | (VERSION_PATCH))
-        \\#define VERSION_STRING_NOSP "v3.12.1"
-        \\#define VERSION_STRING " v3.12.1"
+        \\#define VERSION_STRING_NOSP "v{s}"
+        \\#define VERSION_STRING " v{s}"
         \\#endif  // AOM_VERSION_H_
         \\
-    );
+    , .{ ver[0], ver[1], ver[2], meta.version, meta.version }));
     for ([_][]const u8{ "aom_dsp_rtcd.h", "aom_scale_rtcd.h", "av1_rtcd.h" }) |name| {
         _ = generated.addCopyFile(
             b.path(b.fmt("gen/libaom/{s}/{s}", .{ gen_arch, name })),

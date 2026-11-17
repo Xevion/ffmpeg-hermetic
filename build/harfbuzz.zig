@@ -1,6 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "harfbuzz",
+    .version = "15.1.0",
+    .licenses = &.{"COPYING"},
+    .needs = &.{"freetype"},
+    .ffmpeg_include_subdirs = &.{"harfbuzz"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// HarfBuzz's core shaper with its FreeType integration, from the single-file amalgamation.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

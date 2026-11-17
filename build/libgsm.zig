@@ -1,6 +1,13 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libgsm",
+    .version = "1.0.24",
+    .licenses = &.{"COPYRIGHT"},
+};
 
 /// The GSM 06.10 full-rate codec, with the WAV49 frame packing option.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

@@ -1,9 +1,18 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "fribidi",
+    .version = "1.0.18",
+    .licenses = &.{"COPYING"},
+    .ffmpeg_include_subdirs = &.{"fribidi"},
+};
 
 /// GNU FriBidi, using the unicode tables the release tarball ships in `lib/`.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("fribidi");
     const windows = c.isWindows();
@@ -16,10 +25,10 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .PACKAGE = "fribidi",
         .PACKAGE_NAME = "GNU FriBidi",
         .PACKAGE_BUGREPORT = "https://github.com/fribidi/fribidi/issues/new",
-        .FRIBIDI_VERSION = "1.0.18",
-        .FRIBIDI_MAJOR_VERSION = 1,
-        .FRIBIDI_MINOR_VERSION = 0,
-        .FRIBIDI_MICRO_VERSION = 18,
+        .FRIBIDI_VERSION = meta.version,
+        .FRIBIDI_MAJOR_VERSION = ver[0],
+        .FRIBIDI_MINOR_VERSION = ver[1],
+        .FRIBIDI_MICRO_VERSION = ver[2],
         .FRIBIDI_INTERFACE_VERSION = 4,
         .SIZEOF_INT = 4,
         .FRIBIDI_MSVC_BUILD_PLACEHOLDER = if (c.isMsvc()) "#define FRIBIDI_BUILT_WITH_MSVC" else "#undef FRIBIDI_BUILT_WITH_MSVC",

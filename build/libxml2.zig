@@ -1,9 +1,19 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libxml2",
+    .version = "2.15.4",
+    .licenses = &.{"Copyright"},
+    .ffmpeg_include_subdirs = &.{"libxml2"},
+    .system_libs = .{ .linux = &.{ "m", "pthread", "dl" }, .windows = &.{"bcrypt"} },
+};
 
 /// libxml2 with upstream's default feature set, minus zlib, lzma and ICU, and iconv on Linux only.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("libxml2");
     const t = c.target.result;
@@ -36,8 +46,8 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .style = .{ .cmake = src.path("include/libxml/xmlversion.h.in") },
         .include_path = "libxml/xmlversion.h",
     }, .{
-        .VERSION = "2.15.4",
-        .LIBXML_VERSION_NUMBER = 21504,
+        .VERSION = meta.version,
+        .LIBXML_VERSION_NUMBER = ver[0] * 10000 + ver[1] * 100 + ver[2],
         .LIBXML_VERSION_EXTRA = "",
         .WITH_THREADS = 1,
         .WITH_THREAD_ALLOC = 0,

@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "openh264",
+    .version = "2.6.0",
+    .licenses = &.{"LICENSE"},
+    .ffmpeg = &.{"libopenh264"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 const Component = struct {
     dir: []const u8,

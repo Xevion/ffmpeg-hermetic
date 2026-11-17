@@ -1,9 +1,17 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "snappy",
+    .version = "1.3.1",
+    .licenses = &.{"COPYING"},
+};
 
 /// Snappy (C++) with its C API. Upstream compiles one kernel per target baseline, with no runtime dispatch.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("snappy");
     const t = c.target.result;
@@ -44,9 +52,9 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .include_path = "snappy-stubs-public.h",
     }, .{
         .HAVE_SYS_UIO_H_01 = @as(i64, if (posix) 1 else 0),
-        .PROJECT_VERSION_MAJOR = 1,
-        .PROJECT_VERSION_MINOR = 3,
-        .PROJECT_VERSION_PATCH = 1,
+        .PROJECT_VERSION_MAJOR = ver[0],
+        .PROJECT_VERSION_MINOR = ver[1],
+        .PROJECT_VERSION_PATCH = ver[2],
     });
 
     const mod = c.module(.{ .cpp = true });

@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libass",
+    .version = "0.17.5",
+    .licenses = &.{"COPYING"},
+    .needs = &.{ "freetype", "fribidi", "harfbuzz" },
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// libass with no system font provider (no fontconfig, CoreText or DirectWrite) and no
 /// libunibreak. The x86_64 assembly picks its instruction set at runtime.
@@ -40,12 +49,12 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .PACKAGE = "libass",
         .PACKAGE_BUGREPORT = "",
         .PACKAGE_NAME = "libass",
-        .PACKAGE_STRING = "libass 0.17.5",
+        .PACKAGE_STRING = "libass " ++ meta.version,
         .PACKAGE_TARNAME = "libass",
         .PACKAGE_URL = "",
-        .PACKAGE_VERSION = "0.17.5",
+        .PACKAGE_VERSION = meta.version,
         .STDC_HEADERS = 1,
-        .VERSION = "0.17.5",
+        .VERSION = meta.version,
     });
 
     const freetype = c.dep("freetype");

@@ -1,6 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "opus",
+    .version = "1.6.1",
+    .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libopus"},
+    .ffmpeg_include_subdirs = &.{"opus"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
@@ -29,7 +39,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .OPUS_X86_MAY_HAVE_AVX2 = if (x86) @as(?i64, 1) else null,
         .OPUS_X86_PRESUME_SSE = if (x86) @as(?i64, 1) else null,
         .OPUS_X86_PRESUME_SSE2 = if (x86) @as(?i64, 1) else null,
-        .PACKAGE_VERSION = "1.6.1",
+        .PACKAGE_VERSION = meta.version,
     });
     const base = [_][]const u8{ "-DHAVE_CONFIG_H", "-D_FILE_OFFSET_BITS=64", "-fvisibility=hidden" };
     const setup: Ctx.Setup = .{

@@ -1,9 +1,18 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "speex",
+    .version = "1.2.1",
+    .licenses = &.{"COPYING"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// Speex, floating-point, with the Vorbis FFT and, on x86, the baseline SSE kernels.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("speex");
     const x86 = c.arch() == .x86_64;
@@ -39,10 +48,10 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .LT_OBJDIR = ".libs/",
         .PACKAGE_BUGREPORT = "speex-dev@xiph.org",
         .PACKAGE_NAME = "speex",
-        .PACKAGE_STRING = "speex 1.2.1",
+        .PACKAGE_STRING = "speex " ++ meta.version,
         .PACKAGE_TARNAME = "speex",
         .PACKAGE_URL = "",
-        .PACKAGE_VERSION = "1.2.1",
+        .PACKAGE_VERSION = meta.version,
         .SIZEOF_INT = 4,
         .SIZEOF_INT16_T = 2,
         .SIZEOF_INT32_T = 4,
@@ -53,10 +62,10 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .SIZEOF_U_INT16_T = if (c.isWindows()) @as(?i64, 0) else 2,
         .SIZEOF_U_INT32_T = if (c.isWindows()) @as(?i64, 0) else 4,
         .SPEEX_EXTRA_VERSION = "",
-        .SPEEX_MAJOR_VERSION = 1,
-        .SPEEX_MICRO_VERSION = 1,
-        .SPEEX_MINOR_VERSION = 2,
-        .SPEEX_VERSION = "1.2.1",
+        .SPEEX_MAJOR_VERSION = ver[0],
+        .SPEEX_MICRO_VERSION = ver[2],
+        .SPEEX_MINOR_VERSION = ver[1],
+        .SPEEX_VERSION = meta.version,
         .STDC_HEADERS = 1,
         .TI_C55X = null,
         .USE_ALLOCA = null,

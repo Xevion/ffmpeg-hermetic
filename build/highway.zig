@@ -1,6 +1,13 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "highway",
+    .version = "1.4.0",
+    .licenses = &.{"LICENSE"},
+};
 
 /// Targets libjxl's build turns off. Highway and every user of its dispatch tables must agree on it.
 pub fn disabledTargets(c: Ctx) []const u8 {

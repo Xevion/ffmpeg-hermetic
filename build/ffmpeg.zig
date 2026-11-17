@@ -3,9 +3,21 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 const config = @import("ffmpeg/config.zig");
 const resolve = @import("ffmpeg/resolve.zig");
 const programs = @import("ffmpeg/programs.zig");
+
+pub const meta: Meta = .{
+    .name = "ffmpeg",
+    .version = resolve.data.version,
+    .licenses = &.{ "COPYING.GPLv2", "COPYING.GPLv3", "COPYING.LGPLv2.1", "COPYING.LGPLv3", "LICENSE.md" },
+};
+
+pub const nv_codec_headers: Meta = .{
+    .name = "nv_codec_headers",
+    .version = "n12.1.14.0",
+};
 
 /// Static libraries in link order: each depends only on those after it.
 pub const link_order = [_][]const u8{ "avdevice", "avfilter", "avformat", "avcodec", "swresample", "swscale", "avutil" };
@@ -22,7 +34,7 @@ pub const Options = struct {
     programs: bool = false,
 };
 
-pub fn build(c: Ctx, nasm: Nasm, deps: []const Ctx.Output, o: Options) []const *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *std.Build.Step.Compile {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("ffmpeg");
@@ -66,10 +78,10 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Ctx.Output, o: Options) []const *
     var dep_includes: std.ArrayList(std.Build.LazyPath) = .empty;
     var dep_archives: std.ArrayList(*std.Build.Step.Compile) = .empty;
     for (deps) |dep| {
-        const tree = dep.include;
+        const tree = dep.output.include;
         dep_includes.append(b.allocator, tree) catch @panic("OOM");
-        for (dep.archives) |archive| dep_archives.append(b.allocator, archive.lib) catch @panic("OOM");
-        for ([_][]const u8{ "opus", "svt-av1", "libdrm" }) |sub| {
+        for (dep.output.archives) |archive| dep_archives.append(b.allocator, archive.lib) catch @panic("OOM");
+        for (dep.meta.ffmpeg_include_subdirs) |sub| {
             dep_includes.append(b.allocator, tree.path(b, sub)) catch @panic("OOM");
         }
     }

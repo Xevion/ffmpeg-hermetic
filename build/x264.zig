@@ -1,6 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "x264",
+    .version = "b35605ac",
+    .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libx264"},
+    .license = .gpl,
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;

@@ -2,17 +2,27 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "opencl",
+    .zon = "opencl_icd_loader",
+    .version = "2026.05.29",
+    .licenses = &.{"LICENSE"},
+    .needs = &.{"opencl_headers"},
+    .ffmpeg = &.{"opencl"},
+    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+};
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("opencl_icd_loader");
-    const headers = c.upstream("opencl_headers");
     const windows = c.isWindows();
 
     const mod = c.module(.{});
     mod.addIncludePath(src.path("loader"));
     mod.addIncludePath(src.path("include"));
-    mod.addIncludePath(headers.path(""));
+    mod.addIncludePath(c.dep("opencl_headers").include);
     if (!windows) {
         const config = b.addConfigHeader(.{
             .style = .{ .cmake = src.path("loader/icd_cmake_config.h.in") },

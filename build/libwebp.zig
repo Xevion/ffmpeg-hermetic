@@ -1,8 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 
-const version = "1.6.0";
+pub const meta: Meta = .{
+    .name = "libwebp",
+    .version = "1.6.0",
+    .licenses = &.{ "COPYING", "PATENTS" },
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
+
+const version = meta.version;
 
 /// libwebp (with the decoder and encoder), libsharpyuv, libwebpmux and libwebpdemux. libwebp
 /// carries every installed header.

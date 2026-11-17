@@ -1,8 +1,18 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 
-const version = "v3.1.2";
+pub const meta: Meta = .{
+    .name = "svt_av1",
+    .version = "3.1.2",
+    .licenses = &.{ "LICENSE-BSD2.md", "LICENSE.md", "PATENTS.md" },
+    .ffmpeg = &.{"libsvtav1"},
+    .ffmpeg_include_subdirs = &.{"svt-av1"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
+
+const version = "v" ++ meta.version;
 
 pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;

@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libtheora",
+    .version = "1.2.0",
+    .licenses = &.{ "COPYING", "LICENSE" },
+    .needs = &.{"libogg"},
+};
 
 /// libtheoradec and libtheoraenc. The x86 paths are inline assembly with cpuid dispatch, so
 /// they need no extra target features.

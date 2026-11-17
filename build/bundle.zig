@@ -3,51 +3,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Ctx = @import("Ctx.zig");
-const zon = @import("../build.zig.zon");
+const Meta = @import("Meta.zig");
+const ff = @import("ffmpeg.zig");
 
 const Compile = std.Build.Step.Compile;
 
-const Source = struct {
-    /// Key in build.zig.zon.
-    dep: []const u8,
-    name: []const u8,
-    /// Must appear in the dependency's URL, so a bumped pin cannot leave a stale version here.
-    version: []const u8,
-    /// Archives whose presence means this source went into the bundle; empty means always.
-    archives: []const []const u8 = &.{},
-    licenses: []const []const u8,
-};
-
-const sources = [_]Source{
-    .{ .dep = "ffmpeg", .name = "ffmpeg", .version = "8.1.3", .licenses = &.{ "COPYING.GPLv2", "COPYING.GPLv3", "COPYING.LGPLv2.1", "COPYING.LGPLv3", "LICENSE.md" } },
-    .{ .dep = "nv_codec_headers", .name = "nv-codec-headers", .version = "n12.1.14.0", .licenses = &.{} },
-    .{ .dep = "zlib", .name = "zlib", .version = "1.3.2", .archives = &.{"z"}, .licenses = &.{"LICENSE"} },
-    .{ .dep = "libdrm", .name = "libdrm", .version = "2.4.133", .archives = &.{"drm"}, .licenses = &.{} },
-    .{ .dep = "libva", .name = "libva", .version = "2.23.0", .archives = &.{"va"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "dav1d", .name = "dav1d", .version = "1.5.3", .archives = &.{"dav1d"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "opus", .name = "opus", .version = "1.6.1", .archives = &.{"opus"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "lame", .name = "lame", .version = "3.100", .archives = &.{"mp3lame"}, .licenses = &.{ "COPYING", "LICENSE" } },
-    .{ .dep = "kvazaar", .name = "kvazaar", .version = "2.3.2", .archives = &.{"kvazaar"}, .licenses = &.{ "LICENSE", "LICENSE.EXT.greatest" } },
-    .{ .dep = "libvpx", .name = "libvpx", .version = "1.16.0", .archives = &.{"vpx"}, .licenses = &.{ "LICENSE", "PATENTS" } },
-    .{ .dep = "openh264", .name = "openh264", .version = "2.6.0", .archives = &.{"openh264"}, .licenses = &.{"LICENSE"} },
-    .{ .dep = "libaom", .name = "libaom", .version = "3.12.1", .archives = &.{"aom"}, .licenses = &.{ "LICENSE", "PATENTS" } },
-    .{ .dep = "svt_av1", .name = "svt-av1", .version = "3.1.2", .archives = &.{"SvtAv1Enc"}, .licenses = &.{ "LICENSE-BSD2.md", "LICENSE.md", "PATENTS.md" } },
-    .{ .dep = "libogg", .name = "libogg", .version = "1.3.6", .archives = &.{"ogg"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "libvorbis", .name = "libvorbis", .version = "1.3.7", .archives = &.{"vorbis"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "libtheora", .name = "libtheora", .version = "1.2.0", .archives = &.{"theoraenc"}, .licenses = &.{ "COPYING", "LICENSE" } },
-    .{ .dep = "libwebp", .name = "libwebp", .version = "1.6.0", .archives = &.{"webp"}, .licenses = &.{ "COPYING", "PATENTS" } },
-    .{ .dep = "openjpeg", .name = "openjpeg", .version = "2.5.4", .archives = &.{"openjp2"}, .licenses = &.{"LICENSE"} },
-    .{ .dep = "soxr", .name = "soxr", .version = "0.1.3", .archives = &.{"soxr"}, .licenses = &.{ "COPYING.LGPL", "LICENCE" } },
-    .{ .dep = "zimg", .name = "zimg", .version = "3.0.6", .archives = &.{"zimg"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "bzip2", .name = "bzip2", .version = "1.0.8", .archives = &.{"bz2"}, .licenses = &.{"LICENSE"} },
-    .{ .dep = "xz", .name = "xz", .version = "5.8.4", .archives = &.{"lzma"}, .licenses = &.{ "COPYING", "COPYING.0BSD" } },
-    .{ .dep = "libass", .name = "libass", .version = "0.17.5", .archives = &.{"ass"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "harfbuzz", .name = "harfbuzz", .version = "15.1.0", .archives = &.{"harfbuzz"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "freetype", .name = "freetype", .version = "2.15.0", .archives = &.{"freetype"}, .licenses = &.{ "LICENSE.TXT", "docs/FTL.TXT", "docs/GPLv2.TXT" } },
-    .{ .dep = "fribidi", .name = "fribidi", .version = "1.0.18", .archives = &.{"fribidi"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "x264", .name = "x264", .version = "b35605ac", .archives = &.{"x264"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "x265", .name = "x265", .version = "4.2", .archives = &.{"x265"}, .licenses = &.{"COPYING"} },
-};
+/// The pins that are always in a bundle, before those of the libraries that went into it.
+const fixed_sources = Meta.sources(ff.meta) ++ Meta.sources(ff.nv_codec_headers);
 
 /// Archive names in link order: each appears before the libraries it needs. A bundled archive
 /// missing from this list is left out of the bundle with a warning.
@@ -74,9 +36,9 @@ const Spec = struct {
     sources: []const SourceEntry,
 };
 
-/// Adds the `bundle` step. `codecs` are the external libraries' outputs, `ffmpeg` the seven FFmpeg
-/// libraries whose installed headers become the bundle's include directory.
-pub fn add(c: Ctx, codecs: []const Ctx.Output, ffmpeg: []const *Compile) void {
+/// Adds the `bundle` step. `codecs` are the external libraries that were built, `ffmpeg` the seven
+/// FFmpeg libraries whose installed headers become the bundle's include directory.
+pub fn add(c: Ctx, codecs: []const Meta.Built, ffmpeg: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     if (t.os.tag != .linux or !t.abi.isGnu()) {
@@ -88,26 +50,33 @@ pub fn add(c: Ctx, codecs: []const Ctx.Output, ffmpeg: []const *Compile) void {
 
     const cxx = cxxRuntime(c);
     var archives: std.ArrayList(*Compile) = .empty;
-    for (codecs) |out| for (out.archives) |a| {
-        if (!a.bundled) continue;
-        if (inList(&link_order, a.lib.name)) {
-            archives.append(b.allocator, a.lib) catch @panic("OOM");
-        } else {
-            std.log.warn("lib{s}.a is not in bundle.zig's link_order and is left out of the bundle", .{a.lib.name});
+    var sources: std.ArrayList(Meta.Source) = .empty;
+    sources.appendSlice(b.allocator, fixed_sources) catch @panic("OOM");
+    for (codecs) |codec| {
+        var kept = false;
+        for (codec.output.archives) |a| {
+            if (!a.bundled) continue;
+            if (inList(&link_order, a.lib.name)) {
+                archives.append(b.allocator, a.lib) catch @panic("OOM");
+                kept = true;
+            } else {
+                std.log.warn("lib{s}.a is not in bundle.zig's link_order and is left out of the bundle", .{a.lib.name});
+            }
         }
-    };
+        if (kept) sources.appendSlice(b.allocator, codec.sources) catch @panic("OOM");
+    }
     archives.appendSlice(b.allocator, ffmpeg) catch @panic("OOM");
     archives.appendSlice(b.allocator, &cxx) catch @panic("OOM");
 
     const spec: Spec = .{
         .variant = if (c.gpl) "gpl" else "lgpl",
-        .ffmpeg_version = sources[0].version,
+        .ffmpeg_version = fixed_sources[0].version,
         .bundle_rev = bundle_rev,
         .target = b.fmt("{s}-unknown-linux-gnu", .{@tagName(t.cpu.arch)}),
         .glibc_floor = if (glibc.patch == 0) b.fmt("{d}.{d}", .{ glibc.major, glibc.minor }) else b.fmt("{d}.{d}.{d}", .{ glibc.major, glibc.minor, glibc.patch }),
         .zig = builtin.zig_version_string,
         .link = linkList(c, archives.items),
-        .sources = sourceList(archives.items),
+        .sources = sourceList(b, sources.items),
     };
     const spec_json = std.json.Stringify.valueAlloc(b.allocator, spec, .{ .whitespace = .indent_2 }) catch @panic("OOM");
     const spec_file = b.addWriteFiles().add("spec.json", spec_json);
@@ -134,11 +103,10 @@ pub fn add(c: Ctx, codecs: []const Ctx.Output, ffmpeg: []const *Compile) void {
         run.addArg("--include");
         run.addDirectoryArg(artifact.getEmittedIncludeTree());
     }
-    for (sources) |s| {
-        if (!wanted(s, archives.items)) continue;
+    for (sources.items) |s| {
         for (s.licenses) |file| {
             run.addArg("--license");
-            run.addPrefixedFileArg(b.fmt("{s}=", .{s.name}), c.upstream(s.dep).path(file));
+            run.addPrefixedFileArg(b.fmt("{s}=", .{s.name}), c.upstream(s.zon).path(file));
         }
     }
     for ([_][]const u8{ "libcxx", "libcxxabi" }) |dir| {
@@ -160,12 +128,6 @@ fn hasArchive(archives: []const *Compile, name: []const u8) bool {
     return false;
 }
 
-fn wanted(s: Source, archives: []const *Compile) bool {
-    if (s.archives.len == 0) return true;
-    for (s.archives) |name| if (hasArchive(archives, name)) return true;
-    return false;
-}
-
 fn linkList(c: Ctx, archives: []const *Compile) []const Link {
     const b = c.b;
     var out: std.ArrayList(Link) = .empty;
@@ -178,18 +140,10 @@ fn linkList(c: Ctx, archives: []const *Compile) []const Link {
     return out.items;
 }
 
-fn sourceList(archives: []const *Compile) []const SourceEntry {
-    var out: std.ArrayList(SourceEntry) = .empty;
-    const gpa = std.heap.page_allocator;
-    @setEvalBranchQuota(100_000);
-    inline for (sources) |s| {
-        const pin = @field(zon.dependencies, s.dep);
-        comptime if (std.mem.indexOf(u8, pin.url, s.version) == null) {
-            @compileError("build.zig.zon pins " ++ s.dep ++ " at a URL that does not contain " ++ s.version);
-        };
-        if (wanted(s, archives)) out.append(gpa, .{ .name = s.name, .version = s.version, .sha256 = pin.hash, .url = pin.url }) catch @panic("OOM");
-    }
-    return out.items;
+fn sourceList(b: *std.Build, sources: []const Meta.Source) []const SourceEntry {
+    const out = b.allocator.alloc(SourceEntry, sources.len) catch @panic("OOM");
+    for (out, sources) |*entry, s| entry.* = .{ .name = s.name, .version = s.version, .sha256 = s.hash, .url = s.url };
+    return out;
 }
 
 fn zstdLibrary(b: *std.Build, zstd: *std.Build.Dependency) *Compile {

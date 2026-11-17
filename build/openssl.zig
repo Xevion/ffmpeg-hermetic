@@ -3,7 +3,18 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 const Group = @import("../gen/openssl/group.zig").Group;
+
+pub const meta: Meta = .{
+    .name = "openssl",
+    .version = "3.6.5",
+    .licenses = &.{"LICENSE.txt"},
+    .ffmpeg = &.{"openssl"},
+    .license = .gpl_needs_version3,
+    .system_libs = .{ .linux = &.{"pthread"} },
+    .supports = Meta.support.linux,
+};
 
 /// Where libcrypto looks for `certs/` and `cert.pem` when SSL_CERT_FILE and SSL_CERT_DIR are
 /// unset. Debian, Ubuntu, Alpine, Arch and SUSE keep the system CA store under it.

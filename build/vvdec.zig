@@ -1,10 +1,19 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "vvdec",
+    .version = "3.2.1",
+    .licenses = &.{"LICENSE.txt"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// VVdeC, the H.266/VVC decoder (C++). Upstream builds every x86 file with SSE4.1, so the
 /// baseline is SSE4.1 and AVX2 is chosen at runtime. Other architectures run the x86 kernels through SIMDe.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("vvdec");
     const x86 = c.arch() == .x86_64;
@@ -13,7 +22,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const version = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("source/Lib/vvdec/version.h.in") },
         .include_path = "vvdec/version.h",
-    }, .{ .PROJECT_VERSION_MAJOR = 3, .PROJECT_VERSION_MINOR = 2, .PROJECT_VERSION_PATCH = 1 });
+    }, .{ .PROJECT_VERSION_MAJOR = ver[0], .PROJECT_VERSION_MINOR = ver[1], .PROJECT_VERSION_PATCH = ver[2] });
     const api = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("include/vvdec/vvdec.h.in") },
         .include_path = "vvdec/vvdec.h",

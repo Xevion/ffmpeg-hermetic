@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "soxr",
+    .version = "0.1.3",
+    .licenses = &.{ "COPYING.LGPL", "LICENCE" },
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// The SoX resampler. Its double-precision SIMD engine is built with AVX and chosen at runtime.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

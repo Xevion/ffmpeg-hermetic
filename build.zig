@@ -1,91 +1,141 @@
 const std = @import("std");
 const Ctx = @import("build/Ctx.zig");
 const Nasm = @import("build/Nasm.zig");
+const Meta = @import("build/Meta.zig");
 const ffmpeg = @import("build/ffmpeg.zig");
 const bundle = @import("build/bundle.zig");
 
+/// Every library. Each module exports `meta` and `build(c, nasm) ?Ctx.Output`, null while a lazy dependency is not fetched.
+const ports = .{
+    @import("build/zlib.zig"),
+    @import("build/opus.zig"),
+    @import("build/lame.zig"),
+    @import("build/kvazaar.zig"),
+    @import("build/dav1d.zig"),
+    @import("build/openh264.zig"),
+    @import("build/svt_av1.zig"),
+    @import("build/libaom.zig"),
+    @import("build/libvpx.zig"),
+    @import("build/x264.zig"),
+    @import("build/x265.zig"),
+    @import("build/libogg.zig"),
+    @import("build/libvorbis.zig"),
+    @import("build/libwebp.zig"),
+    @import("build/openjpeg.zig"),
+    @import("build/libtheora.zig"),
+    @import("build/soxr.zig"),
+    @import("build/zimg.zig"),
+    @import("build/bzip2.zig"),
+    @import("build/xz.zig"),
+    @import("build/freetype.zig"),
+    @import("build/fribidi.zig"),
+    @import("build/harfbuzz.zig"),
+    @import("build/libass.zig"),
+    @import("build/highway.zig"),
+    @import("build/brotli.zig"),
+    @import("build/libjxl.zig"),
+    @import("build/speex.zig"),
+    @import("build/twolame.zig"),
+    @import("build/libgsm.zig"),
+    @import("build/snappy.zig"),
+    @import("build/libxml2.zig"),
+    @import("build/vvenc.zig"),
+    @import("build/vvdec.zig"),
+    @import("build/libvmaf.zig"),
+    @import("build/xvidcore.zig"),
+    @import("build/vidstab.zig"),
+    @import("build/rubberband.zig"),
+    @import("build/openssl.zig"),
+    @import("build/vulkan_headers.zig"),
+    @import("build/amf.zig"),
+    @import("build/libvpl.zig"),
+    @import("build/opencl_headers.zig"),
+    @import("build/opencl.zig"),
+    @import("build/libdrm.zig"),
+    @import("build/libva.zig"),
+};
+
 const Library = struct {
-    name: []const u8,
-    /// Null when a lazy dependency is not fetched yet.
+    meta: Meta,
     build: *const fn (Ctx, Nasm) ?Ctx.Output,
-    /// Libraries whose installed headers this one compiles against, built first.
-    needs: []const []const u8 = &.{},
-    gpl: bool = false,
-    linux_only: bool = false,
-    /// Which windows-msvc targets upstream supports.
-    msvc: enum { all, x86_64, none } = .all,
-    /// FFmpeg accepts this library in GPL builds only with --enable-version3 (`-Dversion3`).
-    gpl_needs_version3: bool = false,
-    /// configure names FFmpeg enables when this library is built (`--enable-<name>`).
-    ffmpeg: []const []const u8 = &.{},
+    sources: []const Meta.Source,
 };
 
-const libraries = [_]Library{
-    .{ .name = "zlib", .build = @import("build/zlib.zig").build, .ffmpeg = &.{"zlib"} },
-    .{ .name = "opus", .build = @import("build/opus.zig").build, .ffmpeg = &.{"libopus"} },
-    .{ .name = "lame", .build = @import("build/lame.zig").build, .ffmpeg = &.{"libmp3lame"} },
-    .{ .name = "kvazaar", .build = @import("build/kvazaar.zig").build, .ffmpeg = &.{"libkvazaar"} },
-    .{ .name = "dav1d", .build = @import("build/dav1d.zig").build, .ffmpeg = &.{"libdav1d"} },
-    .{ .name = "openh264", .build = @import("build/openh264.zig").build, .ffmpeg = &.{"libopenh264"} },
-    .{ .name = "svt_av1", .build = @import("build/svt_av1.zig").build, .ffmpeg = &.{"libsvtav1"} },
-    .{ .name = "libaom", .build = @import("build/libaom.zig").build, .ffmpeg = &.{"libaom"} },
-    .{ .name = "libvpx", .build = @import("build/libvpx.zig").build, .ffmpeg = &.{"libvpx"} },
-    .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true, .ffmpeg = &.{"libx264"} },
-    .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true, .ffmpeg = &.{"libx265"} },
-    .{ .name = "libogg", .build = @import("build/libogg.zig").build },
-    .{ .name = "libvorbis", .build = @import("build/libvorbis.zig").build, .needs = &.{"libogg"} },
-    .{ .name = "libwebp", .build = @import("build/libwebp.zig").build },
-    .{ .name = "openjpeg", .build = @import("build/openjpeg.zig").build },
-    .{ .name = "libtheora", .build = @import("build/libtheora.zig").build, .needs = &.{"libogg"} },
-    .{ .name = "soxr", .build = @import("build/soxr.zig").build },
-    .{ .name = "zimg", .build = @import("build/zimg.zig").build },
-    .{ .name = "bzip2", .build = @import("build/bzip2.zig").build },
-    .{ .name = "xz", .build = @import("build/xz.zig").build },
-    .{ .name = "freetype", .build = @import("build/freetype.zig").build },
-    .{ .name = "fribidi", .build = @import("build/fribidi.zig").build },
-    .{ .name = "harfbuzz", .build = @import("build/harfbuzz.zig").build, .needs = &.{"freetype"} },
-    .{ .name = "libass", .build = @import("build/libass.zig").build, .needs = &.{ "freetype", "fribidi", "harfbuzz" } },
-    .{ .name = "highway", .build = @import("build/highway.zig").build },
-    .{ .name = "brotli", .build = @import("build/brotli.zig").build },
-    .{ .name = "libjxl", .build = @import("build/libjxl.zig").build, .needs = &.{ "highway", "brotli" } },
-    .{ .name = "speex", .build = @import("build/speex.zig").build },
-    .{ .name = "twolame", .build = @import("build/twolame.zig").build },
-    .{ .name = "libgsm", .build = @import("build/libgsm.zig").build },
-    .{ .name = "snappy", .build = @import("build/snappy.zig").build },
-    .{ .name = "libxml2", .build = @import("build/libxml2.zig").build },
-    .{ .name = "vvenc", .build = @import("build/vvenc.zig").build },
-    .{ .name = "vvdec", .build = @import("build/vvdec.zig").build },
-    .{ .name = "libvmaf", .build = @import("build/libvmaf.zig").build, .msvc = .none },
-    .{ .name = "xvidcore", .build = @import("build/xvidcore.zig").build, .gpl = true, .msvc = .x86_64 },
-    .{ .name = "vidstab", .build = @import("build/vidstab.zig").build, .gpl = true },
-    .{ .name = "rubberband", .build = @import("build/rubberband.zig").build, .gpl = true },
-    .{ .name = "openssl", .build = @import("build/openssl.zig").build, .linux_only = true, .gpl_needs_version3 = true, .ffmpeg = &.{"openssl"} },
-    .{ .name = "vulkan_headers", .build = @import("build/vulkan_headers.zig").build, .ffmpeg = &.{"vulkan"} },
-    .{ .name = "amf", .build = @import("build/amf.zig").build, .ffmpeg = &.{"amf"} },
-    .{ .name = "libvpl", .build = @import("build/libvpl.zig").build, .ffmpeg = &.{"libvpl"} },
-    .{ .name = "opencl_headers", .build = @import("build/opencl_headers.zig").build },
-    .{ .name = "opencl", .build = @import("build/opencl.zig").build, .needs = &.{"opencl_headers"}, .ffmpeg = &.{"opencl"} },
-    .{ .name = "libdrm", .build = @import("build/libdrm.zig").build, .linux_only = true, .ffmpeg = &.{"libdrm"} },
-    .{ .name = "libva", .build = @import("build/libva.zig").build, .linux_only = true, .ffmpeg = &.{"vaapi"} },
+const libraries = blk: {
+    @setEvalBranchQuota(100_000);
+    var out: [ports.len]Library = undefined;
+    for (ports, 0..) |port, i| {
+        out[i] = .{ .meta = port.meta, .build = port.build, .sources = Meta.sources(port.meta) };
+    }
+    for (out, 0..) |lib, i| {
+        for (out[0..i]) |other| if (std.mem.eql(u8, lib.meta.name, other.meta.name)) {
+            @compileError("library " ++ lib.meta.name ++ " is registered twice");
+        };
+        for (lib.meta.needs) |need| {
+            const registered = for (out) |other| {
+                if (std.mem.eql(u8, need, other.meta.name)) break true;
+            } else false;
+            if (!registered) @compileError(lib.meta.name ++ " needs " ++ need ++ ", which is not registered");
+        }
+    }
+    break :blk out;
 };
 
-fn find(name: []const u8) Library {
-    for (libraries) |lib| if (std.mem.eql(u8, lib.name, name)) return lib;
+/// What the command line asked for.
+const Selection = struct {
+    /// `-D<name>` per library; null when not passed.
+    wanted: [libraries.len]?bool,
+    /// `-Donly=<name>`.
+    only: ?[]const u8,
+    version3: bool,
+};
+
+fn find(name: []const u8) *const Library {
+    for (&libraries) |*lib| if (std.mem.eql(u8, lib.meta.name, name)) return lib;
     std.debug.panic("unknown library {s}", .{name});
+}
+
+fn index(lib: *const Library) usize {
+    for (&libraries, 0..) |*other, i| if (other == lib) return i;
+    unreachable;
+}
+
+/// Why `lib` itself is not built with these options on this target, or null.
+fn ownReason(c: Ctx, sel: Selection, lib: *const Library) ?[]const u8 {
+    const m = lib.meta;
+    if (sel.wanted[index(lib)] == false) return c.b.fmt("-D{s}=false", .{m.name});
+    switch (m.license) {
+        .lgpl => {},
+        .gpl => if (!c.gpl) return "needs -Dgpl",
+        .gpl_needs_version3 => if (c.gpl and !sel.version3) return "needs -Dversion3 in a GPL build",
+    }
+    if (!m.supports(c)) return c.b.fmt("not supported on {t}-{t}", .{ c.arch(), c.os() });
+    return null;
+}
+
+/// Why a library `lib` needs is not built, or null. A library whose needs are unbuilt is itself unbuilt.
+fn needReason(c: Ctx, sel: Selection, lib: *const Library) ?[]const u8 {
+    for (lib.meta.needs) |name| {
+        const need = find(name);
+        const why = ownReason(c, sel, need) orelse needReason(c, sel, need) orelse continue;
+        return c.b.fmt("needs {s} ({s})", .{ name, why });
+    }
+    return null;
 }
 
 /// Builds `lib` once, after the libraries it needs, and records its output in `c.built`. False
 /// when it or a library it needs waits on a lazy dependency.
-fn buildLibrary(c: Ctx, nasm: Nasm, lib: Library, out: *std.ArrayList(Ctx.Output)) bool {
-    if (c.built.contains(lib.name)) return true;
-    for (lib.needs) |need| if (!buildLibrary(c, nasm, find(need), out)) return false;
+fn buildLibrary(c: Ctx, nasm: Nasm, lib: *const Library, out: *std.ArrayList(Meta.Built)) bool {
+    const name = lib.meta.name;
+    if (c.built.contains(name)) return true;
+    for (lib.meta.needs) |need| if (!buildLibrary(c, nasm, find(need), out)) return false;
     const built = lib.build(c, nasm) orelse return false;
-    c.built.put(c.b.allocator, lib.name, built) catch @panic("OOM");
+    c.built.put(c.b.allocator, name, built) catch @panic("OOM");
     if (built.archives.len == 0) {
         c.b.installDirectory(.{ .source_dir = built.include, .install_dir = .header, .install_subdir = "" });
     }
     for (built.archives) |archive| c.b.installArtifact(archive.lib);
-    out.append(c.b.allocator, built) catch @panic("OOM");
+    out.append(c.b.allocator, .{ .meta = &lib.meta, .sources = lib.sources, .output = built }) catch @panic("OOM");
     return true;
 }
 
@@ -108,18 +158,27 @@ pub fn build(b: *std.Build) void {
 
     const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
     const programs = b.option(bool, "programs", "Also build the ffmpeg and ffprobe programs (needs the ffmpeg graph)") orelse false;
-    var deps: std.ArrayList(Ctx.Output) = .empty;
-    for (libraries) |lib| {
-        const wanted = b.option(bool, lib.name, b.fmt("Build {s} and enable it in FFmpeg (default: true)", .{lib.name})) orelse true;
-        if (!wanted or (lib.gpl and !c.gpl) or (lib.gpl_needs_version3 and c.gpl and !version3)) continue;
-        if (lib.linux_only and c.os() != .linux) continue;
-        if (c.isMsvc() and (lib.msvc == .none or (lib.msvc == .x86_64 and c.arch() != .x86_64))) continue;
-        if (only) |name| if (!with_ffmpeg and !std.mem.eql(u8, name, lib.name)) continue;
+    var sel: Selection = .{ .wanted = undefined, .only = only, .version3 = version3 };
+    for (&libraries, &sel.wanted) |*lib, *wanted| {
+        wanted.* = b.option(bool, lib.meta.name, b.fmt("Build {s} and enable it in FFmpeg (default: true)", .{lib.meta.name}));
+    }
+
+    var deps: std.ArrayList(Meta.Built) = .empty;
+    for (&libraries) |*lib| {
+        const name = lib.meta.name;
+        if (ownReason(c, sel, lib) != null) continue;
+        if (only) |only_name| if (!with_ffmpeg and !std.mem.eql(u8, only_name, name)) continue;
+        if (needReason(c, sel, lib)) |why| {
+            const requested = sel.wanted[index(lib)] == true or (only != null and std.mem.eql(u8, only.?, name));
+            if (requested) std.process.fatal("{s} was requested but {s}", .{ name, why });
+            std.log.warn("{s} is not built: {s}", .{ name, why });
+            continue;
+        }
         _ = buildLibrary(c, nasm, lib, &deps);
     }
     if (with_ffmpeg) {
         var enabled: std.ArrayList([]const u8) = .empty;
-        for (libraries) |lib| if (c.built.contains(lib.name)) enabled.appendSlice(b.allocator, lib.ffmpeg) catch @panic("OOM");
+        for (&libraries) |*lib| if (c.built.contains(lib.meta.name)) enabled.appendSlice(b.allocator, lib.meta.ffmpeg) catch @panic("OOM");
         const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3, .programs = programs });
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
         bundle.add(c, deps.items, ffmpeg_libs);

@@ -1,6 +1,13 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "bzip2",
+    .version = "1.0.8",
+    .licenses = &.{"LICENSE"},
+};
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("bzip2");

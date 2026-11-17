@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "freetype",
+    .version = "2.15.0",
+    .licenses = &.{ "LICENSE.TXT", "docs/FTL.TXT", "docs/GPLv2.TXT" },
+    .ffmpeg_include_subdirs = &.{"freetype2"},
+};
 
 /// FreeType with its bundled zlib and no optional PNG, bzip2, brotli or HarfBuzz support, so it
 /// has no dependencies of its own.

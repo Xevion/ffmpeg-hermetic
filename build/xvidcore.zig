@@ -1,6 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "xvidcore",
+    .version = "013c664b",
+    .licenses = &.{"LICENSE"},
+    .license = .gpl,
+    .supports = Meta.support.x86_64OnMsvc,
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// Xvid's MPEG-4 ASP codec. The x86_64 MMX, SSE and SSE2 routines are picked at runtime from cpuid.
 pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {

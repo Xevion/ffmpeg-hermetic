@@ -1,6 +1,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libvmaf",
+    .version = "3.2.1",
+    .licenses = &.{"LICENSE"},
+    .ffmpeg_include_subdirs = &.{"libvmaf"},
+    .supports = Meta.support.notMsvc,
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// libvmaf with the integer and float feature extractors and the built-in models. The x86
 /// kernels (AVX2, AVX-512) and the NEON ones are chosen at runtime.
@@ -25,6 +35,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .VMAF_BUILT_IN_MODELS = 1,
     });
     const generated = b.addWriteFiles();
+    // Upstream's meson version, which its v3.2.1 tag did not bump.
     _ = generated.add("vcs_version.h", "#define VMAF_VERSION \"3.2.0\"\n");
     const version = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("libvmaf/include/libvmaf/version.h.in") },

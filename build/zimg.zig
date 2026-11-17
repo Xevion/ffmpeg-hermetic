@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "zimg",
+    .version = "3.0.6",
+    .licenses = &.{"COPYING"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// zimg (C++). Each x86 instruction set level is its own object, picked at runtime from cpuid.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

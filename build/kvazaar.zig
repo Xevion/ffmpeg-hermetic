@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "kvazaar",
+    .version = "2.3.2",
+    .licenses = &.{ "LICENSE", "LICENSE.EXT.greatest" },
+    .ffmpeg = &.{"libkvazaar"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("kvazaar");
@@ -12,16 +21,16 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         &.{ "-DCMAKE_BUILD", "-DKVZ_DLL_EXPORTS", "-DNDEBUG" };
 
     const generated = c.b.addWriteFiles();
-    _ = generated.add("version.h",
+    _ = generated.add("version.h", c.b.fmt(
         \\#pragma once
         \\#ifndef KVZ_VERSION
-        \\#define KVZ_VERSION 2.3.2
+        \\#define KVZ_VERSION {s}
         \\#endif
         \\#define KVZ_COMPILER_STRING "clang"
         \\#define KVZ_COMPILE_DATE ""
         \\#define VERSION_STRING QUOTE_EXPAND(KVZ_VERSION)
         \\
-    );
+    , .{meta.version}));
 
     var includes: std.ArrayList(std.Build.LazyPath) = .empty;
     includes.append(c.b.allocator, generated.getDirectory()) catch @panic("OOM");

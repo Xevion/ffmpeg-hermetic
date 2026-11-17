@@ -2,8 +2,17 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 
-const version = "3.100";
+pub const meta: Meta = .{
+    .name = "lame",
+    .version = "3.100",
+    .licenses = &.{ "COPYING", "LICENSE" },
+    .ffmpeg = &.{"libmp3lame"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
+
+const version = meta.version;
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;

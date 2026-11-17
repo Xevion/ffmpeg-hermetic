@@ -1,8 +1,17 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 
-const version = "1.5.3";
+pub const meta: Meta = .{
+    .name = "dav1d",
+    .version = "1.5.3",
+    .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libdav1d"},
+    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+};
+
+const version = meta.version;
 
 pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;

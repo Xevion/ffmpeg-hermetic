@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "twolame",
+    .version = "0.4.0",
+    .licenses = &.{"COPYING"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// TwoLAME, the MPEG audio layer 2 encoder.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
@@ -28,14 +36,14 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .PACKAGE = "twolame",
         .PACKAGE_BUGREPORT = "twolame-discuss@lists.sourceforge.net",
         .PACKAGE_NAME = "TwoLAME",
-        .PACKAGE_STRING = "TwoLAME 0.4.0",
+        .PACKAGE_STRING = "TwoLAME " ++ meta.version,
         .PACKAGE_TARNAME = "twolame",
         .PACKAGE_URL = "http://www.twolame.org/",
-        .PACKAGE_VERSION = "0.4.0",
+        .PACKAGE_VERSION = meta.version,
         .SIZEOF_FLOAT = 4,
         .SIZEOF_SHORT = 2,
         .STDC_HEADERS = 1,
-        .VERSION = "0.4.0",
+        .VERSION = meta.version,
         .WORDS_BIGENDIAN = null,
         .@"const" = null,
         .@"inline" = null,

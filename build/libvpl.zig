@@ -2,6 +2,16 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libvpl",
+    .version = "2.17.0",
+    .licenses = &.{"LICENSE"},
+    .ffmpeg = &.{"libvpl"},
+    .ffmpeg_include_subdirs = &.{"vpl"},
+    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+};
 
 /// Fallback location of the runtime for the legacy loader; the oneVPL search also tries the
 /// usual system library directories on its own.

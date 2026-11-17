@@ -1,10 +1,19 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "vvenc",
+    .version = "1.14.0",
+    .licenses = &.{"LICENSE.txt"},
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// VVenC, the H.266/VVC encoder (C++). Each x86 instruction set level is its own object,
 /// picked at runtime from cpuid; other architectures run the same kernels through SIMDe.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("vvenc");
     const x86 = c.arch() == .x86_64;
@@ -13,7 +22,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const version = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("source/Lib/vvenc/version.h.in") },
         .include_path = "vvenc/version.h",
-    }, .{ .PROJECT_VERSION_MAJOR = 1, .PROJECT_VERSION_MINOR = 14, .PROJECT_VERSION_PATCH = 0 });
+    }, .{ .PROJECT_VERSION_MAJOR = ver[0], .PROJECT_VERSION_MINOR = ver[1], .PROJECT_VERSION_PATCH = ver[2] });
     const api = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("include/vvenc/vvenc.h.in") },
         .include_path = "vvenc/vvenc.h",

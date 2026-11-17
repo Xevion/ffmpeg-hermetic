@@ -1,10 +1,20 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "openjpeg",
+    .version = "2.5.4",
+    .licenses = &.{"LICENSE"},
+    .ffmpeg_include_subdirs = &.{"openjpeg-2.5"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// OpenJPEG's libopenjp2. Its vector code in dwt, t1 and mct is chosen at compile time
 /// (`__SSE2__`), so there is nothing to dispatch at runtime.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("openjpeg");
     const lib_src = src.path("src/lib/openjp2");
@@ -15,15 +25,15 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .style = .{ .cmake = lib_src.path(b, "opj_config.h.cmake.in") },
         .include_path = "opj_config.h",
     }, .{
-        .OPENJPEG_VERSION_MAJOR = 2,
-        .OPENJPEG_VERSION_MINOR = 5,
-        .OPENJPEG_VERSION_BUILD = 4,
+        .OPENJPEG_VERSION_MAJOR = ver[0],
+        .OPENJPEG_VERSION_MINOR = ver[1],
+        .OPENJPEG_VERSION_BUILD = ver[2],
     });
     const private = b.addConfigHeader(.{
         .style = .{ .cmake = lib_src.path(b, "opj_config_private.h.cmake.in") },
         .include_path = "opj_config_private.h",
     }, .{
-        .PACKAGE_VERSION = "2.5.4",
+        .PACKAGE_VERSION = meta.version,
         .HAVE_MEMORY_H = null,
         .HAVE_STDLIB_H = null,
         .HAVE_STRINGS_H = null,

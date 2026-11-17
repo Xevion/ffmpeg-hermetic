@@ -2,6 +2,17 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libva",
+    .version = "2.23.0",
+    .licenses = &.{"COPYING"},
+    .needs = &.{"libdrm"},
+    .ffmpeg = &.{"vaapi"},
+    .supports = Meta.support.linux,
+    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+};
 
 /// Compiled in because a static libva has no loader path to find drivers from.
 const driver_dirs = "/usr/lib/x86_64-linux-gnu/dri:/usr/lib64/dri:/usr/lib/dri:/usr/local/lib/dri";
@@ -9,21 +20,23 @@ const driver_dirs = "/usr/lib/x86_64-linux-gnu/dri:/usr/lib64/dri:/usr/lib/dri:/
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libva");
-    const drm = c.upstream("libdrm");
+    const drm = c.dep("libdrm").include;
+    // libva 2.x.y implements VA-API 1.x.y.
+    const ver = Meta.versionParts(meta.version);
 
     const version = b.addConfigHeader(.{
         .style = .{ .meson = src.path("va/va_version.h.in") },
         .include_path = "va/va_version.h",
     }, .{
-        .VA_API_MAJOR_VERSION = 1,
-        .VA_API_MINOR_VERSION = 23,
-        .VA_API_MICRO_VERSION = 0,
-        .VA_API_VERSION = "1.23.0",
+        .VA_API_MAJOR_VERSION = ver[0] - 1,
+        .VA_API_MINOR_VERSION = ver[1],
+        .VA_API_MICRO_VERSION = ver[2],
+        .VA_API_VERSION = b.fmt("{d}.{d}.{d}", .{ ver[0] - 1, ver[1], ver[2] }),
     });
 
     const mod = c.module(.{});
     mod.addConfigHeader(version);
-    for ([_]std.Build.LazyPath{ src.path(""), src.path("va"), drm.path(""), drm.path("include/drm") }) |dir| {
+    for ([_]std.Build.LazyPath{ src.path(""), src.path("va"), drm, drm.path(b, "libdrm") }) |dir| {
         mod.addIncludePath(dir);
     }
     const common = [_][]const u8{ "-DHAVE_SECURE_GETENV", "-D_FILE_OFFSET_BITS=64" };

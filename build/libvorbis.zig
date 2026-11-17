@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libvorbis",
+    .version = "1.3.7",
+    .licenses = &.{"COPYING"},
+    .needs = &.{"libogg"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// libvorbis, libvorbisenc and libvorbisfile; FFmpeg links no libvorbisfile.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

@@ -2,6 +2,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "libdrm",
+    .version = "2.4.133",
+    .ffmpeg = &.{"libdrm"},
+    .ffmpeg_include_subdirs = &.{"libdrm"},
+    .supports = Meta.support.linux,
+};
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("libdrm");

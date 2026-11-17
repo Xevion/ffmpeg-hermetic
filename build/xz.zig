@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "xz",
+    .version = "5.8.4",
+    .licenses = &.{ "COPYING", "COPYING.0BSD" },
+    .system_libs = .{ .linux = &.{"pthread"} },
+};
 
 /// liblzma. CRC acceleration uses function-level `target` attributes with a cpuid check, so no
 /// extra module features are needed.

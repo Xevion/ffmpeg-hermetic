@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "rubberband",
+    .version = "4.0.0",
+    .licenses = &.{"COPYING"},
+    .license = .gpl,
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// Rubber Band (C++) with its built-in resampler and, off macOS, its built-in FFT.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

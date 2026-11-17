@@ -1,11 +1,22 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 const highway = @import("highway.zig");
+
+pub const meta: Meta = .{
+    .name = "libjxl",
+    .version = "0.13.0",
+    .licenses = &.{ "LICENSE", "PATENTS" },
+    .extra_sources = &.{.{ .zon = "skcms", .version = "96d9171c", .licenses = &.{"LICENSE"} }},
+    .needs = &.{ "highway", "brotli" },
+    .system_libs = .{ .linux = &.{ "m", "pthread" } },
+};
 
 /// libjxl, libjxl_threads and libjxl_cms (skcms backend); libjxl carries every installed header.
 /// Highway's targets and skcms's AVX2 and AVX-512 kernels are chosen at runtime.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
+    const ver = Meta.versionParts(meta.version);
     const b = c.b;
     const src = c.upstream("libjxl");
     const skcms = c.upstream("skcms");
@@ -16,7 +27,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const version = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("lib/jxl/version.h.in") },
         .include_path = "jxl/version.h",
-    }, .{ .JPEGXL_MAJOR_VERSION = 0, .JPEGXL_MINOR_VERSION = 13, .JPEGXL_PATCH_VERSION = 0 });
+    }, .{ .JPEGXL_MAJOR_VERSION = ver[0], .JPEGXL_MINOR_VERSION = ver[1], .JPEGXL_PATCH_VERSION = ver[2] });
     const exports = b.addWriteFiles();
     _ = exports.add("jxl/jxl_export.h", exportHeader(b, "JXL", "JXL_STATIC_DEFINE", "__attribute__((visibility(\"default\")))", "__attribute__((visibility(\"hidden\")))"));
     _ = exports.add("jxl/jxl_cms_export.h", exportHeader(b, "JXL_CMS", "JXL_CMS_STATIC_DEFINE", "", ""));

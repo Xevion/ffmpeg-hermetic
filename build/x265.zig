@@ -1,8 +1,18 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
 
-const version = "4.2+1-e444744";
+pub const meta: Meta = .{
+    .name = "x265",
+    .version = "4.2",
+    .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libx265"},
+    .license = .gpl,
+    .system_libs = .{ .linux = &.{ "m", "pthread", "dl" } },
+};
+
+const version = meta.version ++ "+1-e444744";
 const api_build = 216;
 
 const Depth = struct {

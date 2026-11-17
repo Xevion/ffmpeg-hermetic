@@ -1,6 +1,15 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "vidstab",
+    .version = "1.1.2",
+    .licenses = &.{"LICENSE"},
+    .license = .gpl,
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// vid.stab, the video stabilization library, with its SSE2 motion search on x86 and no OpenMP.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

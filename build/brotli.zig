@@ -1,6 +1,14 @@
 const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
+const Meta = @import("Meta.zig");
+
+pub const meta: Meta = .{
+    .name = "brotli",
+    .version = "1.2.1",
+    .licenses = &.{"LICENSE"},
+    .system_libs = .{ .linux = &.{"m"} },
+};
 
 /// brotlicommon, brotlidec and brotlienc.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
