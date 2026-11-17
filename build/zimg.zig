@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// zimg (C++). Each x86 instruction set level is its own object, picked at runtime from cpuid.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("zimg");
     const x86 = c.arch() == .x86_64;
     // Under _MSC_VER the NEON sources use cl.exe workarounds that clang's arm_neon.h rejects, so windows-msvc aarch64 is C only.
@@ -41,7 +41,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("zimg", mod);
     lib.installHeader(src.path("src/zimg/api/zimg.h"), "zimg.h");
     lib.installHeader(src.path("src/zimg/api/zimg++.hpp"), "zimg++.hpp");
-    return lib;
+    return c.single(lib);
 }
 
 const common = [_][]const u8{

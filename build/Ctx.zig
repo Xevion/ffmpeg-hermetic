@@ -11,19 +11,54 @@ optimize: std.builtin.Optimize,
 gpl: bool = false,
 /// Omits debug info from every object.
 strip: ?bool = null,
-/// Archives of the libraries built so far, by registry name.
+/// What each library built so far produced, by registry name.
 built: *Built,
 /// Directory of an xwin splat (MSVC CRT plus Windows SDK), for msvc targets off Windows.
 winsdk: ?[]const u8 = null,
 /// Libc description set on every compile step this Ctx creates; only msvc targets with `winsdk` have one.
 libc_file: ?LazyPath = null,
 
-pub const Built = std.StringHashMapUnmanaged([]const *std.Build.Step.Compile);
+pub const Built = std.StringHashMapUnmanaged(Output);
 
-/// The main archive of an already built library, for linking or reading its installed headers.
-pub fn dep(c: Ctx, name: []const u8) *std.Build.Step.Compile {
-    const archives = c.built.get(name) orelse std.debug.panic("{s} is not built yet; list it in `needs`", .{name});
-    return archives[0];
+/// One static archive of a package.
+pub const Archive = struct {
+    lib: *std.Build.Step.Compile,
+    /// Archives of the same package this one needs after it on the link line.
+    links: []const []const u8 = &.{},
+    /// False for archives FFmpeg never links, which a bundle leaves out.
+    bundled: bool = true,
+};
+
+/// What a package gives its dependents: its archives and its installed include tree.
+pub const Output = struct {
+    /// Empty for header-only packages.
+    archives: []const Archive,
+    include: LazyPath,
+};
+
+/// The output of an already built library, for linking or reading its installed headers.
+pub fn dep(c: Ctx, name: []const u8) Output {
+    return c.built.get(name) orelse std.debug.panic("{s} is not built yet; list it in `needs`", .{name});
+}
+
+/// A package of one archive that carries all of its installed headers.
+pub fn single(c: Ctx, lib: *std.Build.Step.Compile) Output {
+    return c.package(&.{.{ .lib = lib }});
+}
+
+/// A package of several archives. The first archive carries every installed header.
+pub fn package(c: Ctx, archives: []const Archive) Output {
+    return .{
+        .archives = c.b.allocator.dupe(Archive, archives) catch @panic("OOM"),
+        .include = archives[0].lib.getEmittedIncludeTree(),
+    };
+}
+
+/// A header-only package: no archive, only the `.h` files of `dirs` (sub path, source) in one include tree.
+pub fn headerOnly(c: Ctx, dirs: []const struct { []const u8, LazyPath }) Output {
+    const wf = c.b.addWriteFiles();
+    for (dirs) |d| _ = wf.addCopyDirectory(d[1], d[0], .{ .include_extensions = &.{".h"} });
+    return .{ .archives = &.{}, .include = wf.getDirectory() };
 }
 
 pub fn os(c: Ctx) std.Target.Os.Tag {
@@ -45,6 +80,11 @@ pub fn isMsvc(c: Ctx) bool {
 /// The unpacked upstream tarball pinned in build.zig.zon under `name`.
 pub fn upstream(c: Ctx, name: []const u8) *std.Build.Dependency {
     return c.b.dependency(name, .{});
+}
+
+/// Like `upstream` for a lazy dependency; null until it is fetched, and the library is skipped.
+pub fn lazyUpstream(c: Ctx, name: []const u8) ?*std.Build.Dependency {
+    return c.b.lazyDependency(name, .{});
 }
 
 pub const ModuleOptions = struct {

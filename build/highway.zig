@@ -11,7 +11,7 @@ pub fn disabledTargets(c: Ctx) []const u8 {
 }
 
 /// Highway's core library without contrib. Its x86 and Arm targets are chosen at runtime.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("highway");
 
     const mod = c.module(.{ .cpp = true });
@@ -28,7 +28,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("hwy", mod);
     for (headers) |h| lib.installHeader(src.path(c.b.fmt("hwy/{s}", .{h})), c.b.fmt("hwy/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// Snappy (C++) with its C API. Upstream compiles one kernel per target baseline, with no runtime dispatch.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("snappy");
     const t = c.target.result;
@@ -62,5 +62,5 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("snappy", mod);
     for ([_][]const u8{ "snappy-c.h", "snappy-sinksource.h", "snappy.h" }) |h| lib.installHeader(src.path(h), h);
     lib.installConfigHeader(stubs);
-    return lib;
+    return c.single(lib);
 }

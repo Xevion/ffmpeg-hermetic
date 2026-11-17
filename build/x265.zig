@@ -18,11 +18,10 @@ const depths = [_]Depth{
     .{ .bits = 12, .ns = "x265_12bit", .primary = false },
 };
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
-    const src = b.lazyDependency("x265", .{}) orelse
-        return c.staticLibrary("x265", c.module(.{ .cpp = true }));
+    const src = c.lazyUpstream("x265") orelse return null;
     const x86 = t.cpu.arch.isX86();
     const x86_64 = t.cpu.arch == .x86_64;
     const arm64 = t.cpu.arch == .aarch64 and !c.isWindows();
@@ -179,7 +178,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("x265", mod);
     lib.installHeader(src.path("source/x265.h"), "x265.h");
     lib.installConfigHeader(config);
-    return lib;
+    return c.single(lib);
 }
 
 const Group = Ctx.SourceGroup;

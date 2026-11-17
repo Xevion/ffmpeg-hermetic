@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// HarfBuzz's core shaper with its FreeType integration, from the single-file amalgamation.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("harfbuzz");
     const freetype = c.dep("freetype");
@@ -26,8 +26,8 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const mod = c.module(.{ .cpp = true });
     mod.addIncludePath(src.path("src"));
-    mod.addIncludePath(freetype.getEmittedIncludeTree());
-    mod.addIncludePath(freetype.getEmittedIncludeTree().path(b, "freetype2"));
+    mod.addIncludePath(freetype.include);
+    mod.addIncludePath(freetype.include.path(b, "freetype2"));
     if (c.isMsvc()) {
         // The UCRT's NAN is inf * 0, which clang rejects in a constexpr initializer.
         const wrapper = b.addWriteFiles().add("harfbuzz_msvc.cc",
@@ -44,7 +44,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("harfbuzz", mod);
     for (headers) |h| lib.installHeader(src.path(b.fmt("src/{s}", .{h})), b.fmt("harfbuzz/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 const headers = [_][]const u8{

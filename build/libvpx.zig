@@ -8,7 +8,7 @@ const version_patch = 0;
 
 const Entry = struct { name: []const u8, value: u8 };
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("libvpx");
@@ -86,7 +86,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("vpx", mod);
     for (installed_headers) |h| lib.installHeader(src.path(b.fmt("vpx/{s}", .{h})), b.fmt("vpx/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 fn configEntries(b: *std.Build, c: Ctx, x86_64: bool, arm64: bool) []const Entry {

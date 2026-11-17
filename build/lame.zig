@@ -5,7 +5,7 @@ const Nasm = @import("Nasm.zig");
 
 const version = "3.100";
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("lame");
@@ -134,7 +134,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("mp3lame", mod);
     lib.installHeadersDirectory(src.path("include"), "lame", .{ .include_extensions = &.{"lame.h"} });
-    return lib;
+    return c.single(lib);
 }
 
 fn have(condition: bool) ?c_int {

@@ -3,7 +3,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("opencl_icd_loader");
     const headers = c.upstream("opencl_headers");
@@ -31,7 +31,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     mod.addCSourceFiles(.{ .root = src.path("loader"), .files = &common, .flags = &flags });
     mod.addCSourceFiles(.{ .root = src.path("loader"), .files = if (windows) &windows_c else &linux_c, .flags = &flags });
 
-    return c.staticLibrary("OpenCL", mod);
+    return c.single(c.staticLibrary("OpenCL", mod));
 }
 
 const common = [_][]const u8{ "icd.c", "icd_dispatch.c", "icd_dispatch_generated.c", "icd_trace.c" };

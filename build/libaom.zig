@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const arch = c.arch();
     const x86_64 = arch == .x86_64;
@@ -94,7 +94,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("aom", mod);
     for (public_headers) |h| lib.installHeader(src.path(b.fmt("aom/{s}", .{h})), b.fmt("aom/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 const Features = union(enum) {

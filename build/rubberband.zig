@@ -3,9 +3,9 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// Rubber Band (C++) with its built-in resampler and, off macOS, its built-in FFT.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
-    const src = b.lazyDependency("rubberband", .{}) orelse return c.staticLibrary("rubberband", c.module(.{ .cpp = true }));
+    const src = c.lazyUpstream("rubberband") orelse return null;
     const t = c.target.result;
     const darwin = t.os.tag.isDarwin();
 
@@ -33,7 +33,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     for ([_][]const u8{ "rubberband-c.h", "RubberBandStretcher.h", "RubberBandLiveShifter.h" }) |h| {
         lib.installHeader(src.path(b.fmt("rubberband/{s}", .{h})), b.fmt("rubberband/{s}", .{h}));
     }
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

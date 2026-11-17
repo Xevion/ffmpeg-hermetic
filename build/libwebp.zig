@@ -4,8 +4,9 @@ const Nasm = @import("Nasm.zig");
 
 const version = "1.6.0";
 
-/// libwebp (with the decoder and encoder), libsharpyuv, libwebpmux and libwebpdemux.
-pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
+/// libwebp (with the decoder and encoder), libsharpyuv, libwebpmux and libwebpdemux. libwebp
+/// carries every installed header.
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libwebp");
     const x86 = c.arch() == .x86_64;
@@ -53,7 +54,7 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     }
     if (arm) webp_mod.addCSourceFiles(.{ .root = src.path(""), .files = &neon, .flags = flags });
     const webp = c.staticLibrary("webp", webp_mod);
-    for ([_][]const u8{ "decode.h", "encode.h", "types.h" }) |h| {
+    for ([_][]const u8{ "decode.h", "encode.h", "types.h", "mux.h", "mux_types.h", "demux.h" }) |h| {
         webp.installHeader(src.path(b.fmt("src/webp/{s}", .{h})), b.fmt("webp/{s}", .{h}));
     }
 
@@ -64,26 +65,25 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     if (arm) sharpyuv_mod.addCSourceFiles(.{ .root = src.path("sharpyuv"), .files = &.{"sharpyuv_neon.c"}, .flags = flags });
     const sharpyuv_lib = c.staticLibrary("sharpyuv", sharpyuv_mod);
     for ([_][]const u8{ "sharpyuv.h", "sharpyuv_csp.h" }) |h| {
-        sharpyuv_lib.installHeader(src.path(b.fmt("sharpyuv/{s}", .{h})), b.fmt("webp/sharpyuv/{s}", .{h}));
+        webp.installHeader(src.path(b.fmt("sharpyuv/{s}", .{h})), b.fmt("webp/sharpyuv/{s}", .{h}));
     }
 
     const mux_mod = c.module(.{});
     setup.apply(mux_mod);
     mux_mod.addCSourceFiles(.{ .root = src.path("src/mux"), .files = &mux, .flags = flags });
     const mux_lib = c.staticLibrary("webpmux", mux_mod);
-    for ([_][]const u8{ "mux.h", "mux_types.h", "types.h" }) |h| {
-        mux_lib.installHeader(src.path(b.fmt("src/webp/{s}", .{h})), b.fmt("webp/{s}", .{h}));
-    }
 
     const demux_mod = c.module(.{});
     setup.apply(demux_mod);
     demux_mod.addCSourceFiles(.{ .root = src.path("src/demux"), .files = &demux, .flags = flags });
     const demux_lib = c.staticLibrary("webpdemux", demux_mod);
-    for ([_][]const u8{ "demux.h", "mux_types.h", "decode.h", "types.h" }) |h| {
-        demux_lib.installHeader(src.path(b.fmt("src/webp/{s}", .{h})), b.fmt("webp/{s}", .{h}));
-    }
 
-    return b.allocator.dupe(*std.Build.Step.Compile, &.{ webp, sharpyuv_lib, mux_lib, demux_lib }) catch @panic("OOM");
+    return c.package(&.{
+        .{ .lib = webp, .links = &.{"sharpyuv"} },
+        .{ .lib = sharpyuv_lib },
+        .{ .lib = mux_lib, .links = &.{"webp"} },
+        .{ .lib = demux_lib, .links = &.{"webp"} },
+    });
 }
 
 const sharpyuv = [_][]const u8{

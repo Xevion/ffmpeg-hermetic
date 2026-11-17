@@ -4,23 +4,23 @@ const Nasm = @import("Nasm.zig");
 
 /// libtheoradec and libtheoraenc. The x86 paths are inline assembly with cpuid dispatch, so
 /// they need no extra target features.
-pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libtheora");
     const ogg = c.dep("libogg");
     // Upstream ships MSVC-syntax inline asm for 32-bit x86 only, so x86_64 msvc builds C only.
     const x86 = c.arch() == .x86_64 and !c.isMsvc();
 
-    const archives = [_]struct { name: []const u8, groups: []const []const []const u8 }{
+    const archives = [_]struct { name: []const u8, groups: []const []const []const u8, links: []const []const u8 = &.{} }{
         .{ .name = "theoradec", .groups = &.{ &common, &decoder } },
-        .{ .name = "theoraenc", .groups = &.{ &common, &encoder } },
+        .{ .name = "theoraenc", .groups = &.{ &common, &encoder }, .links = &.{"theoradec"} },
     };
-    var out: [archives.len]*std.Build.Step.Compile = undefined;
+    var out: [archives.len]Ctx.Archive = undefined;
     for (archives, 0..) |a, i| {
         const mod = c.module(.{});
         mod.addIncludePath(src.path("include"));
         mod.addIncludePath(src.path("lib"));
-        mod.addIncludePath(ogg.getEmittedIncludeTree());
+        mod.addIncludePath(ogg.include);
         var flags: std.ArrayList([]const u8) = .empty;
         flags.append(b.allocator, "-fvisibility=hidden") catch @panic("OOM");
         if (x86) flags.appendSlice(b.allocator, &.{ "-DOC_X86_ASM", "-DOC_X86_64_ASM" }) catch @panic("OOM");
@@ -35,9 +35,9 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
                 lib.installHeader(src.path(b.fmt("include/theora/{s}", .{h})), b.fmt("theora/{s}", .{h}));
             }
         }
-        out[i] = lib;
+        out[i] = .{ .lib = lib, .links = a.links };
     }
-    return b.allocator.dupe(*std.Build.Step.Compile, &out) catch @panic("OOM");
+    return c.package(&out);
 }
 
 const common = [_][]const u8{

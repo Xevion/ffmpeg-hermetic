@@ -6,9 +6,8 @@ const bundle = @import("build/bundle.zig");
 
 const Library = struct {
     name: []const u8,
-    build: ?*const fn (Ctx, Nasm) *std.Build.Step.Compile = null,
-    /// For libraries that ship several archives; the first is the one dependents link.
-    build_all: ?*const fn (Ctx, Nasm) []const *std.Build.Step.Compile = null,
+    /// Null when a lazy dependency is not fetched yet.
+    build: *const fn (Ctx, Nasm) ?Ctx.Output,
     /// Libraries whose installed headers this one compiles against, built first.
     needs: []const []const u8 = &.{},
     gpl: bool = false,
@@ -34,10 +33,10 @@ const libraries = [_]Library{
     .{ .name = "x264", .build = @import("build/x264.zig").build, .gpl = true, .ffmpeg = &.{"libx264"} },
     .{ .name = "x265", .build = @import("build/x265.zig").build, .gpl = true, .ffmpeg = &.{"libx265"} },
     .{ .name = "libogg", .build = @import("build/libogg.zig").build },
-    .{ .name = "libvorbis", .build_all = @import("build/libvorbis.zig").build, .needs = &.{"libogg"} },
-    .{ .name = "libwebp", .build_all = @import("build/libwebp.zig").build },
+    .{ .name = "libvorbis", .build = @import("build/libvorbis.zig").build, .needs = &.{"libogg"} },
+    .{ .name = "libwebp", .build = @import("build/libwebp.zig").build },
     .{ .name = "openjpeg", .build = @import("build/openjpeg.zig").build },
-    .{ .name = "libtheora", .build_all = @import("build/libtheora.zig").build, .needs = &.{"libogg"} },
+    .{ .name = "libtheora", .build = @import("build/libtheora.zig").build, .needs = &.{"libogg"} },
     .{ .name = "soxr", .build = @import("build/soxr.zig").build },
     .{ .name = "zimg", .build = @import("build/zimg.zig").build },
     .{ .name = "bzip2", .build = @import("build/bzip2.zig").build },
@@ -47,8 +46,8 @@ const libraries = [_]Library{
     .{ .name = "harfbuzz", .build = @import("build/harfbuzz.zig").build, .needs = &.{"freetype"} },
     .{ .name = "libass", .build = @import("build/libass.zig").build, .needs = &.{ "freetype", "fribidi", "harfbuzz" } },
     .{ .name = "highway", .build = @import("build/highway.zig").build },
-    .{ .name = "brotli", .build_all = @import("build/brotli.zig").build },
-    .{ .name = "libjxl", .build_all = @import("build/libjxl.zig").build, .needs = &.{ "highway", "brotli" } },
+    .{ .name = "brotli", .build = @import("build/brotli.zig").build },
+    .{ .name = "libjxl", .build = @import("build/libjxl.zig").build, .needs = &.{ "highway", "brotli" } },
     .{ .name = "speex", .build = @import("build/speex.zig").build },
     .{ .name = "twolame", .build = @import("build/twolame.zig").build },
     .{ .name = "libgsm", .build = @import("build/libgsm.zig").build },
@@ -60,7 +59,7 @@ const libraries = [_]Library{
     .{ .name = "xvidcore", .build = @import("build/xvidcore.zig").build, .gpl = true, .msvc = .x86_64 },
     .{ .name = "vidstab", .build = @import("build/vidstab.zig").build, .gpl = true },
     .{ .name = "rubberband", .build = @import("build/rubberband.zig").build, .gpl = true },
-    .{ .name = "openssl", .build_all = @import("build/openssl.zig").build, .linux_only = true, .gpl_needs_version3 = true, .ffmpeg = &.{"openssl"} },
+    .{ .name = "openssl", .build = @import("build/openssl.zig").build, .linux_only = true, .gpl_needs_version3 = true, .ffmpeg = &.{"openssl"} },
     .{ .name = "vulkan_headers", .build = @import("build/vulkan_headers.zig").build, .ffmpeg = &.{"vulkan"} },
     .{ .name = "amf", .build = @import("build/amf.zig").build, .ffmpeg = &.{"amf"} },
     .{ .name = "libvpl", .build = @import("build/libvpl.zig").build, .ffmpeg = &.{"libvpl"} },
@@ -75,20 +74,19 @@ fn find(name: []const u8) Library {
     std.debug.panic("unknown library {s}", .{name});
 }
 
-/// Builds `lib` once, after the libraries it needs, and records its archives in `c.built`.
-fn buildLibrary(c: Ctx, nasm: Nasm, lib: Library, out: *std.ArrayList(*std.Build.Step.Compile)) void {
-    if (c.built.contains(lib.name)) return;
-    for (lib.needs) |need| buildLibrary(c, nasm, find(need), out);
-    const archives: []const *std.Build.Step.Compile = if (lib.build_all) |f| f(c, nasm) else blk: {
-        const one = c.b.allocator.alloc(*std.Build.Step.Compile, 1) catch @panic("OOM");
-        one[0] = lib.build.?(c, nasm);
-        break :blk one;
-    };
-    c.built.put(c.b.allocator, lib.name, archives) catch @panic("OOM");
-    for (archives) |artifact| {
-        c.b.installArtifact(artifact);
-        out.append(c.b.allocator, artifact) catch @panic("OOM");
+/// Builds `lib` once, after the libraries it needs, and records its output in `c.built`. False
+/// when it or a library it needs waits on a lazy dependency.
+fn buildLibrary(c: Ctx, nasm: Nasm, lib: Library, out: *std.ArrayList(Ctx.Output)) bool {
+    if (c.built.contains(lib.name)) return true;
+    for (lib.needs) |need| if (!buildLibrary(c, nasm, find(need), out)) return false;
+    const built = lib.build(c, nasm) orelse return false;
+    c.built.put(c.b.allocator, lib.name, built) catch @panic("OOM");
+    if (built.archives.len == 0) {
+        c.b.installDirectory(.{ .source_dir = built.include, .install_dir = .header, .install_subdir = "" });
     }
+    for (built.archives) |archive| c.b.installArtifact(archive.lib);
+    out.append(c.b.allocator, built) catch @panic("OOM");
+    return true;
 }
 
 pub fn build(b: *std.Build) void {
@@ -110,14 +108,14 @@ pub fn build(b: *std.Build) void {
 
     const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
     const programs = b.option(bool, "programs", "Also build the ffmpeg and ffprobe programs (needs the ffmpeg graph)") orelse false;
-    var deps: std.ArrayList(*std.Build.Step.Compile) = .empty;
+    var deps: std.ArrayList(Ctx.Output) = .empty;
     for (libraries) |lib| {
         const wanted = b.option(bool, lib.name, b.fmt("Build {s} and enable it in FFmpeg (default: true)", .{lib.name})) orelse true;
         if (!wanted or (lib.gpl and !c.gpl) or (lib.gpl_needs_version3 and c.gpl and !version3)) continue;
         if (lib.linux_only and c.os() != .linux) continue;
         if (c.isMsvc() and (lib.msvc == .none or (lib.msvc == .x86_64 and c.arch() != .x86_64))) continue;
         if (only) |name| if (!with_ffmpeg and !std.mem.eql(u8, name, lib.name)) continue;
-        buildLibrary(c, nasm, lib, &deps);
+        _ = buildLibrary(c, nasm, lib, &deps);
     }
     if (with_ffmpeg) {
         var enabled: std.ArrayList([]const u8) = .empty;

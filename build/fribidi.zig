@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// GNU FriBidi, using the unicode tables the release tarball ships in `lib/`.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("fribidi");
     const windows = c.isWindows();
@@ -41,7 +41,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("fribidi", mod);
     for (headers) |h| lib.installHeader(src.path(b.fmt("lib/{s}", .{h})), b.fmt("fribidi/{s}", .{h}));
     lib.installHeader(config.getOutputFile(), "fribidi/fribidi-config.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

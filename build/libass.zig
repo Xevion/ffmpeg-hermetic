@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// libass with no system font provider (no fontconfig, CoreText or DirectWrite) and no
 /// libunibreak. The x86_64 assembly picks its instruction set at runtime.
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libass");
     const x86 = c.arch() == .x86_64;
@@ -53,10 +53,10 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     mod.addConfigHeader(config);
     mod.addIncludePath(src.path(""));
     mod.addIncludePath(src.path("libass"));
-    mod.addIncludePath(freetype.getEmittedIncludeTree());
-    mod.addIncludePath(freetype.getEmittedIncludeTree().path(b, "freetype2"));
-    mod.addIncludePath(c.dep("fribidi").getEmittedIncludeTree().path(b, "fribidi"));
-    mod.addIncludePath(c.dep("harfbuzz").getEmittedIncludeTree().path(b, "harfbuzz"));
+    mod.addIncludePath(freetype.include);
+    mod.addIncludePath(freetype.include.path(b, "freetype2"));
+    mod.addIncludePath(c.dep("fribidi").include.path(b, "fribidi"));
+    mod.addIncludePath(c.dep("harfbuzz").include.path(b, "harfbuzz"));
     mod.addCSourceFiles(.{
         .root = src.path("libass"),
         .files = &sources,
@@ -78,7 +78,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("ass", mod);
     lib.installHeader(src.path("libass/ass.h"), "ass/ass.h");
     lib.installHeader(src.path("libass/ass_types.h"), "ass/ass_types.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

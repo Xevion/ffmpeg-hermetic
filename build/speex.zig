@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// Speex, floating-point, with the Vorbis FFT and, on x86, the baseline SSE kernels.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("speex");
     const x86 = c.arch() == .x86_64;
@@ -95,7 +95,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("speex", mod);
     for (headers) |h| lib.installHeader(src.path(b.fmt("include/speex/{s}", .{h})), b.fmt("speex/{s}", .{h}));
     lib.installConfigHeader(types);
-    return lib;
+    return c.single(lib);
 }
 
 const headers = [_][]const u8{ "speex.h", "speex_bits.h", "speex_callbacks.h", "speex_header.h", "speex_stereo.h", "speex_types.h" };

@@ -3,9 +3,9 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// vid.stab, the video stabilization library, with its SSE2 motion search on x86 and no OpenMP.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
-    const src = b.lazyDependency("vidstab", .{}) orelse return c.staticLibrary("vidstab", c.module(.{}));
+    const src = c.lazyUpstream("vidstab") orelse return null;
 
     var flags: std.ArrayList([]const u8) = .empty;
     flags.appendSlice(b.allocator, &.{ "-std=gnu99", "-Wno-pointer-sign" }) catch @panic("OOM");
@@ -19,7 +19,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("vidstab", mod);
     for (headers) |h| lib.installHeader(src.path(b.fmt("src/{s}", .{h})), b.fmt("vid.stab/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

@@ -29,8 +29,8 @@ fn lists(arch: std.Target.Cpu.Arch) Lists {
     };
 }
 
-/// Returns libssl first, then libcrypto, which libssl needs at link time.
-pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
+/// libssl, which carries the installed headers, and the libcrypto it needs at link time.
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("openssl");
     const gen = b.path(b.fmt("gen/openssl/{s}", .{@tagName(c.arch())}));
@@ -48,7 +48,10 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     for ([_]std.Build.LazyPath{ gen.path(b, "include/openssl"), src.path("include/openssl") }) |dir| {
         ssl_lib.installHeadersDirectory(dir, "openssl", .{ .include_extensions = &.{".h"} });
     }
-    return b.allocator.dupe(*std.Build.Step.Compile, &.{ ssl_lib, crypto_lib }) catch @panic("OOM");
+    return c.package(&.{
+        .{ .lib = ssl_lib, .links = &.{"crypto"} },
+        .{ .lib = crypto_lib },
+    });
 }
 
 fn flagsFor(c: Ctx, g: Group) []const []const u8 {

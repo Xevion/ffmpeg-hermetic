@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// VVdeC, the H.266/VVC decoder (C++). Upstream builds every x86 file with SSE4.1, so the
 /// baseline is SSE4.1 and AVX2 is chosen at runtime. Other architectures run the x86 kernels through SIMDe.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("vvdec");
     const x86 = c.arch() == .x86_64;
@@ -83,7 +83,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     for ([_][]const u8{ "sei.h", "vvdecDecl.h" }) |h| lib.installHeader(src.path(b.fmt("include/vvdec/{s}", .{h})), b.fmt("vvdec/{s}", .{h}));
     lib.installConfigHeader(api);
     lib.installConfigHeader(version);
-    return lib;
+    return c.single(lib);
 }
 
 fn withDefine(b: *std.Build, base: []const []const u8, define: ?[]const u8) []const []const u8 {

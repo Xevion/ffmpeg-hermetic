@@ -3,9 +3,9 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 const highway = @import("highway.zig");
 
-/// libjxl, libjxl_threads and libjxl_cms (skcms backend), in that order. Highway's targets and
-/// skcms's AVX2 and AVX-512 kernels are chosen at runtime.
-pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
+/// libjxl, libjxl_threads and libjxl_cms (skcms backend); libjxl carries every installed header.
+/// Highway's targets and skcms's AVX2 and AVX-512 kernels are chosen at runtime.
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libjxl");
     const skcms = c.upstream("skcms");
@@ -88,10 +88,14 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     jxl.installConfigHeader(version);
     jxl.installHeader(exports.getDirectory().path(b, "jxl/jxl_export.h"), "jxl/jxl_export.h");
     jxl.installHeader(exports.getDirectory().path(b, "jxl/jxl_cms_export.h"), "jxl/jxl_cms_export.h");
-    for (threads_headers) |h| threads.installHeader(src.path(b.fmt("lib/include/jxl/{s}", .{h})), b.fmt("jxl/{s}", .{h}));
-    threads.installHeader(exports.getDirectory().path(b, "jxl/jxl_threads_export.h"), "jxl/jxl_threads_export.h");
+    for (threads_headers) |h| jxl.installHeader(src.path(b.fmt("lib/include/jxl/{s}", .{h})), b.fmt("jxl/{s}", .{h}));
+    jxl.installHeader(exports.getDirectory().path(b, "jxl/jxl_threads_export.h"), "jxl/jxl_threads_export.h");
 
-    return b.allocator.dupe(*std.Build.Step.Compile, &.{ jxl, threads, cms }) catch @panic("OOM");
+    return c.package(&.{
+        .{ .lib = jxl, .links = &.{"jxl_cms"} },
+        .{ .lib = threads },
+        .{ .lib = cms },
+    });
 }
 
 fn withFlags(b: *std.Build, base: []const []const u8, extra: []const []const u8) []const []const u8 {

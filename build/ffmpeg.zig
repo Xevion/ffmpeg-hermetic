@@ -22,7 +22,7 @@ pub const Options = struct {
     programs: bool = false,
 };
 
-pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Options) []const *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm, deps: []const Ctx.Output, o: Options) []const *std.Build.Step.Compile {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("ffmpeg");
@@ -64,9 +64,11 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Optio
     });
 
     var dep_includes: std.ArrayList(std.Build.LazyPath) = .empty;
+    var dep_archives: std.ArrayList(*std.Build.Step.Compile) = .empty;
     for (deps) |dep| {
-        const tree = dep.getEmittedIncludeTree();
+        const tree = dep.include;
         dep_includes.append(b.allocator, tree) catch @panic("OOM");
+        for (dep.archives) |archive| dep_archives.append(b.allocator, archive.lib) catch @panic("OOM");
         for ([_][]const u8{ "opus", "svt-av1", "libdrm" }) |sub| {
             dep_includes.append(b.allocator, tree.path(b, sub)) catch @panic("OOM");
         }
@@ -175,7 +177,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Optio
         .embed = embed,
         .compress = state.enabled("resource_compression"),
         .libs = out.items,
-        .deps = deps,
+        .deps = dep_archives.items,
     });
 
     std.mem.sort([]const u8, manifest.items, {}, struct {

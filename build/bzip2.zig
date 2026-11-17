@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("bzip2");
     const mod = c.module(.{});
     mod.addCSourceFiles(.{
@@ -12,5 +12,5 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     });
     const lib = c.staticLibrary("bz2", mod);
     lib.installHeader(src.path("bzlib.h"), "bzlib.h");
-    return lib;
+    return c.single(lib);
 }

@@ -3,7 +3,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("libdrm");
 
     const mod = c.module(.{});
@@ -30,5 +30,5 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     lib.installHeader(src.path("xf86drm.h"), "xf86drm.h");
     lib.installHeader(src.path("xf86drmMode.h"), "xf86drmMode.h");
     lib.installHeadersDirectory(src.path("include/drm"), "libdrm", .{});
-    return lib;
+    return c.single(lib);
 }

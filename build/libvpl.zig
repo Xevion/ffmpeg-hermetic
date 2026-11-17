@@ -7,7 +7,7 @@ const Nasm = @import("Nasm.zig");
 /// usual system library directories on its own.
 const modules_dir = "/usr/lib/x86_64-linux-gnu";
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("libvpl");
     const mod = c.module(.{ .cpp = true });
 
@@ -24,7 +24,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("vpl", mod);
     lib.installHeadersDirectory(src.path("api/vpl"), "vpl", .{});
-    return lib;
+    return c.single(lib);
 }
 
 const common = [_][]const u8{

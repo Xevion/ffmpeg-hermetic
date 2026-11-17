@@ -2,24 +2,24 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-/// brotlicommon, brotlidec and brotlienc, in that order.
-pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
+/// brotlicommon, brotlidec and brotlienc.
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("brotli");
-    const archives = [_]struct { name: []const u8, dir: []const u8, files: []const []const u8 }{
-        .{ .name = "brotlicommon", .dir = "common", .files = &common },
+    const archives = [_]struct { name: []const u8, dir: []const u8, files: []const []const u8, links: []const []const u8 = &.{"brotlicommon"} }{
+        .{ .name = "brotlicommon", .dir = "common", .files = &common, .links = &.{} },
         .{ .name = "brotlidec", .dir = "dec", .files = &dec },
         .{ .name = "brotlienc", .dir = "enc", .files = &enc },
     };
-    var out: [archives.len]*std.Build.Step.Compile = undefined;
+    var out: [archives.len]Ctx.Archive = undefined;
     for (archives, 0..) |a, i| {
         const mod = c.module(.{});
         mod.addIncludePath(src.path("c/include"));
         mod.addCSourceFiles(.{ .root = src.path(c.b.fmt("c/{s}", .{a.dir})), .files = a.files });
         const lib = c.staticLibrary(a.name, mod);
         if (i == 0) for (headers) |h| lib.installHeader(src.path(c.b.fmt("c/include/brotli/{s}", .{h})), c.b.fmt("brotli/{s}", .{h}));
-        out[i] = lib;
+        out[i] = .{ .lib = lib, .links = a.links };
     }
-    return c.b.allocator.dupe(*std.Build.Step.Compile, &out) catch @panic("OOM");
+    return c.package(&out);
 }
 
 const headers = [_][]const u8{ "decode.h", "encode.h", "port.h", "shared_dictionary.h", "types.h" };

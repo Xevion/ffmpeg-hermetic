@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("libogg");
     const mod = c.module(.{});
 
@@ -28,5 +28,5 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     lib.installHeader(src.path("include/ogg/ogg.h"), "ogg/ogg.h");
     lib.installHeader(src.path("include/ogg/os_types.h"), "ogg/os_types.h");
     lib.installConfigHeader(types);
-    return lib;
+    return c.single(lib);
 }

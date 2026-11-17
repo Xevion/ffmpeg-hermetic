@@ -3,9 +3,9 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// Xvid's MPEG-4 ASP codec. The x86_64 MMX, SSE and SSE2 routines are picked at runtime from cpuid.
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
-    const src = b.lazyDependency("xvidcore", .{}) orelse return c.staticLibrary("xvidcore", c.module(.{}));
+    const src = c.lazyUpstream("xvidcore") orelse return null;
     const t = c.target.result;
     const x86 = c.arch() == .x86_64;
 
@@ -40,7 +40,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("xvidcore", mod);
     lib.installHeader(src.path("src/xvid.h"), "xvid.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

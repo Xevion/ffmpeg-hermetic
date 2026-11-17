@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// The GSM 06.10 full-rate codec, with the WAV49 frame packing option.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("libgsm");
 
     const mod = c.module(.{});
@@ -16,7 +16,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("gsm", mod);
     lib.installHeader(src.path("inc/gsm.h"), "gsm.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

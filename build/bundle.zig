@@ -49,7 +49,7 @@ const sources = [_]Source{
     .{ .dep = "x265", .name = "x265", .version = "4.2", .archives = &.{"x265"}, .licenses = &.{"COPYING"} },
 };
 
-/// Archive names in link order: each appears before the libraries it needs. A built archive
+/// Archive names in link order: each appears before the libraries it needs. A bundled archive
 /// missing from this list is left out of the bundle with a warning.
 const link_order = [_][]const u8{
     "avdevice", "avfilter", "avformat",  "avcodec",    "vpx",       "dav1d",    "aom",
@@ -59,9 +59,6 @@ const link_order = [_][]const u8{
     "zimg",     "bz2",      "lzma",      "swresample", "soxr",      "swscale",  "avutil",
     "z",        "drm",      "va",        "c++",        "c++abi",
 };
-
-/// Built archives FFmpeg never links.
-const not_bundled = [_][]const u8{"vorbisfile"};
 
 const Link = struct { name: []const u8, kind: []const u8 };
 const SourceEntry = struct { name: []const u8, version: []const u8, sha256: []const u8, url: []const u8 };
@@ -77,9 +74,9 @@ const Spec = struct {
     sources: []const SourceEntry,
 };
 
-/// Adds the `bundle` step. `codecs` are the external-library archives, `ffmpeg` the seven FFmpeg
+/// Adds the `bundle` step. `codecs` are the external libraries' outputs, `ffmpeg` the seven FFmpeg
 /// libraries whose installed headers become the bundle's include directory.
-pub fn add(c: Ctx, codecs: []const *Compile, ffmpeg: []const *Compile) void {
+pub fn add(c: Ctx, codecs: []const Ctx.Output, ffmpeg: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     if (t.os.tag != .linux or !t.abi.isGnu()) {
@@ -91,13 +88,14 @@ pub fn add(c: Ctx, codecs: []const *Compile, ffmpeg: []const *Compile) void {
 
     const cxx = cxxRuntime(c);
     var archives: std.ArrayList(*Compile) = .empty;
-    for (codecs) |a| {
-        if (inList(&link_order, a.name)) {
-            archives.append(b.allocator, a) catch @panic("OOM");
-        } else if (!inList(&not_bundled, a.name)) {
-            std.log.warn("lib{s}.a is not in bundle.zig's link_order and is left out of the bundle", .{a.name});
+    for (codecs) |out| for (out.archives) |a| {
+        if (!a.bundled) continue;
+        if (inList(&link_order, a.lib.name)) {
+            archives.append(b.allocator, a.lib) catch @panic("OOM");
+        } else {
+            std.log.warn("lib{s}.a is not in bundle.zig's link_order and is left out of the bundle", .{a.lib.name});
         }
-    }
+    };
     archives.appendSlice(b.allocator, ffmpeg) catch @panic("OOM");
     archives.appendSlice(b.allocator, &cxx) catch @panic("OOM");
 

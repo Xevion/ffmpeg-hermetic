@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// OpenJPEG's libopenjp2. Its vector code in dwt, t1 and mct is chosen at compile time
 /// (`__SSE2__`), so there is nothing to dispatch at runtime.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("openjpeg");
     const lib_src = src.path("src/lib/openjp2");
@@ -58,7 +58,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("openjp2", mod);
     lib.installHeader(lib_src.path(b, "openjpeg.h"), "openjpeg-2.5/openjpeg.h");
     lib.installHeader(public.getOutputFile(), "openjpeg-2.5/opj_config.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// FreeType with its bundled zlib and no optional PNG, bzip2, brotli or HarfBuzz support, so it
 /// has no dependencies of its own.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("freetype");
     const windows = c.isWindows();
@@ -23,7 +23,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     lib.installHeader(src.path("include/ft2build.h"), "freetype2/ft2build.h");
     for (public_headers) |h| lib.installHeader(src.path(b.fmt("include/freetype/{s}", .{h})), b.fmt("freetype2/freetype/{s}", .{h}));
     for (config_headers) |h| lib.installHeader(src.path(b.fmt("include/freetype/config/{s}", .{h})), b.fmt("freetype2/freetype/config/{s}", .{h}));
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

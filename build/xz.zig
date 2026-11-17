@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// liblzma. CRC acceleration uses function-level `target` attributes with a cpuid check, so no
 /// extra module features are needed.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("xz");
     const t = c.target.result;
@@ -59,7 +59,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("lzma", mod);
     lib.installHeader(src.path("src/liblzma/api/lzma.h"), "lzma.h");
     lib.installHeadersDirectory(src.path("src/liblzma/api/lzma"), "lzma", .{});
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

@@ -2,12 +2,10 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
-    // A lazy dependency not yet fetched: the toolchain fetches it and reruns configure, so
-    // this placeholder is never built.
-    const src = c.b.dependencyLazy("x264", .{}) catch return c.staticLibrary("x264", c.module(.{}));
+    const src = c.lazyUpstream("x264") orelse return null;
 
     const x86 = t.cpu.arch.isX86();
     const x86_64 = t.cpu.arch == .x86_64;
@@ -151,7 +149,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("x264", mod);
     lib.installHeader(src.path("x264.h"), "x264.h");
     lib.installConfigHeader(x264_config);
-    return lib;
+    return c.single(lib);
 }
 
 fn b10(v: bool) u1 {

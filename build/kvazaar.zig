@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("kvazaar");
     const x86 = c.target.result.cpu.arch.isX86();
     const msvc = c.isMsvc();
@@ -63,7 +63,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("kvazaar", mod);
     lib.installHeader(src.path("src/kvazaar.h"), "kvazaar.h");
-    return lib;
+    return c.single(lib);
 }
 
 const lib_sources = [_][]const u8{

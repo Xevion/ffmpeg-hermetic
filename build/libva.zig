@@ -6,7 +6,7 @@ const Nasm = @import("Nasm.zig");
 /// Compiled in because a static libva has no loader path to find drivers from.
 const driver_dirs = "/usr/lib/x86_64-linux-gnu/dri:/usr/lib64/dri:/usr/lib/dri:/usr/local/lib/dri";
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libva");
     const drm = c.upstream("libdrm");
@@ -42,7 +42,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     lib.installHeadersDirectory(src.path("va"), "va", .{ .include_extensions = &public_headers });
     lib.installHeader(src.path("va/drm/va_drm.h"), "va/va_drm.h");
     lib.installConfigHeader(version);
-    return lib;
+    return c.single(lib);
 }
 
 const public_headers = [_][]const u8{

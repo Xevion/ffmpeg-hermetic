@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// TwoLAME, the MPEG audio layer 2 encoder.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("twolame");
     const posix: ?i64 = if (c.isWindows()) null else 1;
@@ -51,7 +51,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("twolame", mod);
     lib.installHeader(src.path("libtwolame/twolame.h"), "twolame.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

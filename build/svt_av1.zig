@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 const version = "v3.1.2";
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("svt_av1");
     const x86_64 = c.arch() == .x86_64;
@@ -125,7 +125,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("SvtAv1Enc", mod);
     lib.installHeadersDirectory(src.path("Source/API"), "svt-av1", .{ .include_extensions = &.{".h"} });
-    return lib;
+    return c.single(lib);
 }
 
 const safestring = [_][]const u8{

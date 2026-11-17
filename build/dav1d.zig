@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 const version = "1.5.3";
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("dav1d");
@@ -143,7 +143,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("dav1d", mod);
     lib.installHeadersDirectory(src.path("include/dav1d"), "dav1d", .{});
-    return lib;
+    return c.single(lib);
 }
 
 fn b10(v: bool) u1 {

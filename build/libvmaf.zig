@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// libvmaf with the integer and float feature extractors and the built-in models. The x86
 /// kernels (AVX2, AVX-512) and the NEON ones are chosen at runtime.
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libvmaf");
     const t = c.target.result;
@@ -119,7 +119,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         lib.installHeader(src.path(b.fmt("libvmaf/include/libvmaf/{s}", .{h})), b.fmt("libvmaf/{s}", .{h}));
     }
     lib.installConfigHeader(version);
-    return lib;
+    return c.single(lib);
 }
 
 const core = [_][]const u8{

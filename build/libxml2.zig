@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// libxml2 with upstream's default feature set, minus zlib, lzma and ICU, and iconv on Linux only.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libxml2");
     const t = c.target.result;
@@ -82,7 +82,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("xml2", mod);
     for (headers) |h| lib.installHeader(src.path(b.fmt("include/libxml/{s}", .{h})), b.fmt("libxml2/libxml/{s}", .{h}));
     lib.installHeader(version.getOutputFile(), "libxml2/libxml/xmlversion.h");
-    return lib;
+    return c.single(lib);
 }
 
 const sources = [_][]const u8{

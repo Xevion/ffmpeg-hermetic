@@ -4,7 +4,7 @@ const Nasm = @import("Nasm.zig");
 
 /// VVenC, the H.266/VVC encoder (C++). Each x86 instruction set level is its own object,
 /// picked at runtime from cpuid; other architectures run the same kernels through SIMDe.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("vvenc");
     const x86 = c.arch() == .x86_64;
@@ -75,7 +75,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     for ([_][]const u8{ "vvencCfg.h", "vvencDecl.h" }) |h| lib.installHeader(src.path(b.fmt("include/vvenc/{s}", .{h})), b.fmt("vvenc/{s}", .{h}));
     lib.installConfigHeader(api);
     lib.installConfigHeader(version);
-    return lib;
+    return c.single(lib);
 }
 
 fn withDefine(b: *std.Build, base: []const []const u8, define: ?[]const u8) []const []const u8 {

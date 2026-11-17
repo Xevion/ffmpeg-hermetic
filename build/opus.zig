@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("opus");
     const mod = c.module(.{});
@@ -57,7 +57,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("opus", mod);
     lib.installHeadersDirectory(src.path("include"), "opus", .{});
-    return lib;
+    return c.single(lib);
 }
 
 const silk = [_][]const u8{

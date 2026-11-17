@@ -10,7 +10,7 @@ const Component = struct {
     arm64_asm: []const []const u8,
 };
 
-pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const b = c.b;
     const t = c.target.result;
     const src = c.upstream("openh264");
@@ -65,7 +65,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     for ([_][]const u8{ "codec_api.h", "codec_app_def.h", "codec_def.h", "codec_ver.h" }) |h| {
         lib.installHeader(src.path(b.fmt("codec/api/wels/{s}", .{h})), b.fmt("wels/{s}", .{h}));
     }
-    return lib;
+    return c.single(lib);
 }
 
 fn setup(c: Ctx, src: *std.Build.Dependency, generated: *std.Build.Step.WriteFile, includes: []const []const u8, arm64: bool) Ctx.Setup {

@@ -2,7 +2,7 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const src = c.upstream("zlib");
     const mod = c.module(.{});
     var flags: std.ArrayList([]const u8) = .empty;
@@ -22,5 +22,5 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     const lib = c.staticLibrary("z", mod);
     lib.installHeader(src.path("zlib.h"), "zlib.h");
     lib.installHeader(src.path("zconf.h"), "zconf.h");
-    return lib;
+    return c.single(lib);
 }

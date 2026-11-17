@@ -3,7 +3,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
 /// The SoX resampler. Its double-precision SIMD engine is built with AVX and chosen at runtime.
-pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
+pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("soxr");
     const x86 = c.arch() == .x86_64;
@@ -47,7 +47,7 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
 
     const lib = c.staticLibrary("soxr", mod);
     lib.installHeader(src.path("src/soxr.h"), "soxr.h");
-    return lib;
+    return c.single(lib);
 }
 
 const common = [_][]const u8{
