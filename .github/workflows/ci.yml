@@ -62,7 +62,7 @@ jobs:
       - name: FATE
         if: matrix.fate
         run: |
-          sudo apt-get install -y nasm
+          sudo apt-get install -y nasm libxml2-utils
           rsync -rltLW --delete rsync://fate-suite.ffmpeg.org/fate-suite/ fate-suite/
           hash=$(sed -n '/^        \.ffmpeg = \.{/,/}/s/.*\.hash = "\(.*\)".*/\1/p' build.zig.zon)
           XFAIL=tools/fate_xfail.txt JOBS=4 tools/fate.sh out "zig-pkg/$hash" fate-suite
