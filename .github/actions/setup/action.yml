@@ -33,6 +33,13 @@ runs:
           !.zig-cache/tmp
         key: zig-build-${{ runner.os }}-${{ steps.build-key.outputs.key }}-${{ github.sha }}
         restore-keys: zig-build-${{ runner.os }}-${{ steps.build-key.outputs.key }}-
+    # zig 0.17 misses on any file whose inode changed, and a restore gives every file a new one.
+    # TODO: drop this step and tools/zig_restat.zig once the pinned zig is 0.18.
+    - name: Restat
+      shell: bash
+      run: |
+        lib=$(zig env | sed -n 's/^ *\.lib_dir = "\(.*\)",$/\1/p' | sed 's/\\\\/\\/g')
+        zig run tools/zig_restat.zig -- .zig-cache . "$lib"
     # Upstream hosts drop connections now and then; a configure pass fetches every package.
     - name: Fetch
       shell: bash
