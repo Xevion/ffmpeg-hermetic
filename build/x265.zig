@@ -134,12 +134,20 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
                 .{ .name = "sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .cpp = &.{"common/aarch64/sao-prim-sve2.cpp"}, .asm_files = &aarch64_sve2_asm },
                 .{ .name = "sve2_bitperm", .features = &.{ .v9a, .i8mm, .sve2_bitperm }, .cpp = &.{}, .asm_files = &.{"common/aarch64/pixel-util-sve2-bitperm.S"} },
             };
+            // 8-bit SVE2 asm clobbers callee-saved d8-d15 (z8-z15), so that set builds and dispatches without SVE2.
+            var dispatch_flags: std.ArrayList([]const u8) = .empty;
+            for (flags.items) |flag| {
+                if (high or !std.mem.eql(u8, flag, "-DHAVE_SVE2=1")) dispatch_flags.append(b.allocator, flag) catch @panic("OOM");
+            }
             for (isas) |isa| {
+                if (!high and std.mem.eql(u8, isa.name, "sve2")) continue;
+                const dispatch: []const []const u8 = if (std.mem.eql(u8, isa.name, "neon")) &.{"common/aarch64/asm-primitives.cpp"} else &.{};
                 c.addSources(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, isa.name }), .{
                     .module = .{ .cpp = true, .aarch64_features = isa.features },
                     .setup = setup,
                     .groups = &.{
                         .{ .root = root, .files = isa.cpp, .flags = flags.items },
+                        .{ .root = root, .files = dispatch, .flags = dispatch_flags.items },
                         .{ .root = root, .files = isa.asm_files, .flags = &asm_flags },
                     },
                 });
@@ -234,9 +242,9 @@ const asm_high = [_][]const u8{
 };
 
 const aarch64_neon_cpp = [_][]const u8{
-    "common/aarch64/asm-primitives.cpp", "common/aarch64/pixel-prim.cpp",      "common/aarch64/filter-prim.cpp",
-    "common/aarch64/dct-prim.cpp",       "common/aarch64/loopfilter-prim.cpp", "common/aarch64/intrapred-prim.cpp",
-    "common/aarch64/arm64-utils.cpp",    "common/aarch64/sao-prim.cpp",
+    "common/aarch64/pixel-prim.cpp",      "common/aarch64/filter-prim.cpp",    "common/aarch64/dct-prim.cpp",
+    "common/aarch64/loopfilter-prim.cpp", "common/aarch64/intrapred-prim.cpp", "common/aarch64/arm64-utils.cpp",
+    "common/aarch64/sao-prim.cpp",
 };
 
 const aarch64_neon_asm = [_][]const u8{
