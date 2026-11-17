@@ -1,0 +1,30 @@
+name: setup
+description: Installs zig, restores the package cache and fetches the dependencies a build needs.
+
+inputs:
+  args:
+    description: zig build options that decide which (lazy) dependencies are fetched
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: mlugg/setup-zig@v2.2.1
+      with:
+        version: 0.17.0
+        use-cache: false
+    - uses: actions/cache@v6.1.0
+      with:
+        path: zig-pkg
+        key: zig-pkg-${{ runner.os }}-${{ hashFiles('build.zig.zon') }}
+        restore-keys: zig-pkg-${{ runner.os }}-
+    # Upstream hosts drop connections now and then; a configure pass fetches every package.
+    - name: Fetch
+      shell: bash
+      run: |
+        for attempt in 1 2 3 4; do
+          zig build ${{ inputs.args }} -l > /dev/null && exit 0
+          echo "fetch attempt $attempt failed" >&2
+          sleep $((attempt * 15))
+        done
+        exit 1
