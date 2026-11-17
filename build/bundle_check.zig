@@ -5,6 +5,8 @@
 //! as a consumer's linker may.
 //! Off Linux it only links: `msvc` names archives `<name>.lib` and links against the libc file
 //! of an xwin splat when one is given.
+//! It writes to stderr only on failure: the build runner reports any stderr of a passing Run
+//! step as a warning followed by a "failed command" line.
 //! usage: bundle_check <bundle-dir> <out-dir> <zig> <zig-target> <check.c> run|link gnu|msvc [libc-file]
 const std = @import("std");
 const Io = std.Io;
@@ -82,5 +84,4 @@ fn expectSuccess(io: Io, arena: std.mem.Allocator, argv: []const []const u8, env
         std.log.err("{s} failed: {t}\n{s}", .{ what, result.term, result.stderr });
         return error.CheckFailed;
     }
-    if (result.stdout.len > 0) std.log.info("{s}", .{std.mem.trimEnd(u8, result.stdout, "\n")});
 }
