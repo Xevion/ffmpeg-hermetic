@@ -196,9 +196,9 @@ fn sourceList(archives: []const *Compile) []const SourceEntry {
 
 fn zstdLibrary(b: *std.Build, zstd: *std.Build.Dependency) *Compile {
     const mod = b.createModule(.{ .target = b.graph.host, .optimize = .ReleaseFast, .link_libc = true });
-    mod.addIncludePath(zstd.path("zstd-1.5.7/lib"));
+    mod.addIncludePath(zstd.path("lib"));
     mod.addCSourceFiles(.{
-        .root = zstd.path("zstd-1.5.7/lib"),
+        .root = zstd.path("lib"),
         .files = &.{
             "common/debug.c",                     "common/entropy_common.c",            "common/error_private.c",
             "common/fse_decompress.c",            "common/pool.c",                      "common/threading.c",
