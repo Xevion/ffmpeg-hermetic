@@ -109,7 +109,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .STDC_HEADERS = 1,
         .TAKEHIRO_IEEE754_HACK = 0,
         .TIME_WITH_SYS_TIME = have(posix),
-        .USE_FAST_LOG = 1,
+        .USE_FAST_LOG = have(x86 or t.cpu.arch.isPowerPC()),
         ._ALL_SOURCE = 1,
         ._COSMO_SOURCE = 1,
         ._DARWIN_C_SOURCE = 1,
