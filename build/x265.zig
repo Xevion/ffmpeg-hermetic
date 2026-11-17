@@ -2,8 +2,8 @@ const std = @import("std");
 const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 
-const version = "4.1+1-1d117be";
-const api_build = 215;
+const version = "4.2+1-e444744";
+const api_build = 216;
 
 const Depth = struct {
     bits: u8,
@@ -34,7 +34,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const config = b.addConfigHeader(.{
         .style = .{ .cmake = src.path("source/x265_config.h.in") },
         .include_path = "x265_config.h",
-    }, .{ .X265_BUILD = api_build });
+    }, .{ .X265_BUILD = api_build, .ENABLE_ALPHA = 0, .ENABLE_MULTIVIEW = 0, .ENABLE_SCC_EXT = 0 });
 
     const mod = c.module(.{ .cpp = true });
 
@@ -64,6 +64,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             "-DHAVE_NEON_I8MM=1",
             "-DHAVE_SVE=1",
             "-DHAVE_SVE2=1",
+            "-DHAVE_SVE2_BITPERM=1",
             "-DHAVE_SVE_BRIDGE=1",
             "-flax-vector-conversions=none",
         }) catch @panic("OOM");
@@ -113,10 +114,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             // The same -march extensions upstream's CMake applies per source; the .S files select theirs with .arch.
             const isas = [_]Isa{
                 .{ .name = "neon", .features = &.{}, .cpp = &aarch64_neon_cpp, .asm_files = &aarch64_neon_asm },
-                .{ .name = "dotprod", .features = &.{.dotprod}, .cpp = &.{"common/aarch64/filter-neon-dotprod.cpp"}, .asm_files = &aarch64_dotprod_asm },
+                .{ .name = "dotprod", .features = &.{.dotprod}, .cpp = &.{ "common/aarch64/filter-neon-dotprod.cpp", "common/aarch64/pixel-prim-neon-dotprod.cpp" }, .asm_files = &aarch64_dotprod_asm },
                 .{ .name = "i8mm", .features = &.{ .dotprod, .i8mm }, .cpp = &.{"common/aarch64/filter-neon-i8mm.cpp"}, .asm_files = &.{} },
-                .{ .name = "sve", .features = &.{ .dotprod, .i8mm, .sve }, .cpp = &.{ "common/aarch64/sao-prim-sve.cpp", "common/aarch64/dct-prim-sve.cpp" }, .asm_files = &aarch64_sve_asm },
+                .{ .name = "sve", .features = &.{ .dotprod, .i8mm, .sve }, .cpp = &aarch64_sve_cpp, .asm_files = &aarch64_sve_asm },
                 .{ .name = "sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .cpp = &.{"common/aarch64/sao-prim-sve2.cpp"}, .asm_files = &aarch64_sve2_asm },
+                .{ .name = "sve2_bitperm", .features = &.{ .v9a, .i8mm, .sve2_bitperm }, .cpp = &.{}, .asm_files = &.{"common/aarch64/pixel-util-sve2-bitperm.S"} },
             };
             for (isas) |isa| {
                 c.addObjectsTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, isa.name }), .{
@@ -220,7 +222,7 @@ const encoder = [_][]const u8{
     "encoder/framefilter.cpp", "encoder/level.cpp",            "encoder/motion.cpp",
     "encoder/nal.cpp",         "encoder/ratecontrol.cpp",      "encoder/reference.cpp",
     "encoder/sao.cpp",         "encoder/search.cpp",           "encoder/sei.cpp",
-    "encoder/slicetype.cpp",   "encoder/weightPrediction.cpp",
+    "encoder/slicetype.cpp",   "encoder/threadedme.cpp",       "encoder/weightPrediction.cpp",
 };
 
 const asm_common = [_][]const u8{
@@ -250,17 +252,20 @@ const aarch64_neon_asm = [_][]const u8{
     "common/aarch64/asm.S",               "common/aarch64/mc-a.S",       "common/aarch64/mc-a-common.S",
     "common/aarch64/sad-a.S",             "common/aarch64/pixel-util.S", "common/aarch64/pixel-util-common.S",
     "common/aarch64/p2s.S",               "common/aarch64/p2s-common.S", "common/aarch64/blockcopy8.S",
-    "common/aarch64/blockcopy8-common.S", "common/aarch64/ssd-a.S",      "common/aarch64/ssd-a-common.S",
-    "common/aarch64/intrapred.S",         "common/aarch64/dct.S",
+    "common/aarch64/ssd-a.S",             "common/aarch64/ssd-a-common.S", "common/aarch64/intrapred.S",
+    "common/aarch64/dct.S",
 };
 
 const aarch64_dotprod_asm = [_][]const u8{ "common/aarch64/sad-neon-dotprod.S", "common/aarch64/ssd-neon-dotprod.S" };
 
-const aarch64_sve_asm = [_][]const u8{
-    "common/aarch64/asm-sve.S", "common/aarch64/blockcopy8-sve.S",
-    "common/aarch64/p2s-sve.S", "common/aarch64/pixel-util-sve.S",
+const aarch64_sve_cpp = [_][]const u8{
+    "common/aarch64/sao-prim-sve.cpp",    "common/aarch64/dct-prim-sve.cpp",
+    "common/aarch64/filter-prim-sve.cpp", "common/aarch64/pixel-prim-sve.cpp",
 };
 
-const aarch64_sve2_asm = [_][]const u8{
-    "common/aarch64/mc-a-sve2.S", "common/aarch64/pixel-util-sve2.S", "common/aarch64/ssd-a-sve2.S",
+const aarch64_sve_asm = [_][]const u8{
+    "common/aarch64/asm-sve.S",        "common/aarch64/p2s-sve.S",
+    "common/aarch64/pixel-util-sve.S", "common/aarch64/ssd-a-sve.S",
 };
+
+const aarch64_sve2_asm = [_][]const u8{ "common/aarch64/mc-a-sve2.S", "common/aarch64/pixel-util-sve2.S" };

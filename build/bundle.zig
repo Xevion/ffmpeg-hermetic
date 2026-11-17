@@ -46,7 +46,7 @@ const sources = [_]Source{
     .{ .dep = "freetype", .name = "freetype", .version = "2.15.0", .archives = &.{"freetype"}, .licenses = &.{ "LICENSE.TXT", "docs/FTL.TXT", "docs/GPLv2.TXT" } },
     .{ .dep = "fribidi", .name = "fribidi", .version = "1.0.18", .archives = &.{"fribidi"}, .licenses = &.{"COPYING"} },
     .{ .dep = "x264", .name = "x264", .version = "b35605ac", .archives = &.{"x264"}, .licenses = &.{"COPYING"} },
-    .{ .dep = "x265", .name = "x265", .version = "4.1", .archives = &.{"x265"}, .licenses = &.{"COPYING"} },
+    .{ .dep = "x265", .name = "x265", .version = "4.2", .archives = &.{"x265"}, .licenses = &.{"COPYING"} },
 };
 
 /// Archive names in link order: each appears before the libraries it needs. A built archive

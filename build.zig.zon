@@ -60,8 +60,8 @@
             .hash = "N-V-__8AAMr61gHDGsBub1uDF1pIKhhMGCcbwgs0I_RtPz6d",
         },
         .x265 = .{
-            .url = "git+https://bitbucket.org/multicoreware/x265_git?ref=4.1#1d117bed4747758b51bd2c124d738527e30392cb",
-            .hash = "N-V-__8AAHDc2wB-mJAZ2nHNTVUIbfJgQhLMcfQEYFDrW0f4",
+            .url = "git+https://bitbucket.org/multicoreware/x265_git?ref=4.2#e444744c03978c1fb4e037168967020cf2648427",
+            .hash = "N-V-__8AAHQk5wBvL-7TYm7hUPtbraMTVuJRZEFT0Au7296N",
             .lazy = true,
         },
         .nasm = .{
