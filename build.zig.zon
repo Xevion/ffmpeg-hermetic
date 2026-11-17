@@ -43,8 +43,8 @@
             .hash = "N-V-__8AADOWBgDgoQADlmHofFZArpYo_IHYXrCHCfaCjjcD",
         },
         .lame = .{
-            .url = "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz",
-            .hash = "N-V-__8AAIm4XQB9PiCy3xbOccd6xQ5Km10n8EwsptlPk1uh",
+            .url = "https://downloads.sourceforge.net/project/lame/lame/4.0/lame-4.0.tar.gz",
+            .hash = "N-V-__8AALOAWgDYiL5tTdngD2_aL1e-HkkzavWMAODN1bfF",
         },
         .x264 = .{
             .url = "https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz",
