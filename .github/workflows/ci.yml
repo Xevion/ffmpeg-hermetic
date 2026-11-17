@@ -5,6 +5,17 @@ on:
   pull_request:
 
 jobs:
+  # Every checked-in configure oracle, resolved without compiling anything.
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          args: -Dgpl -Donly=ffmpeg -Dffmpeg-version=9.0
+      - run: tools/check_oracles.sh
+
   build:
     name: build (${{ matrix.target }}, ${{ matrix.variant }}${{ matrix.version && format(', {0}', matrix.version) || '' }})
     strategy:
@@ -44,11 +55,10 @@ jobs:
         run: |
           read -ra args <<< "$ARGS"
           zig build "${args[@]}" --prefix out install bundle bundle-check
-      - name: Oracle
-        run: |
-          dir=gen/ffmpeg/${{ matrix.version || '8.1' }}/${{ matrix.oracle }}-${{ matrix.variant }}/oracle
-          [ -d "$dir" ] || { echo "no oracle for this target"; exit 0; }
-          $(command -v python3 || command -v python) tools/check_config.py out/share/ffmpeg-zig/config "$dir"
+      # The config job runs off Windows, where msvc oracles need an SDK.
+      - name: Oracle (msvc)
+        if: runner.os == 'Windows'
+        run: tools/check_oracles.sh ${{ matrix.target }}-${{ matrix.variant }}
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: bundle-${{ matrix.target }}-${{ matrix.variant }}${{ matrix.version && format('-{0}', matrix.version) || '' }}
