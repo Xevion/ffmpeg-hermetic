@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .version = "b35605ac",
     .licenses = &.{"COPYING"},
     .ffmpeg = &.{"libx264"},
+    .ffmpeg_probes = &.{"libx264_hdr10"},
     .license = .gpl,
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

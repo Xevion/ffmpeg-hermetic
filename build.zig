@@ -51,6 +51,7 @@ const ports = .{
     @import("build/libvpl.zig"),
     @import("build/opencl_headers.zig"),
     @import("build/opencl.zig"),
+    @import("build/nv_codec_headers.zig"),
     @import("build/libdrm.zig"),
     @import("build/libva.zig"),
 };
@@ -72,10 +73,10 @@ const libraries = blk: {
             @compileError("library " ++ lib.meta.name ++ " is registered twice");
         };
         for (lib.meta.needs) |need| {
-            const registered = for (out) |other| {
+            const earlier = for (out[0..i]) |other| {
                 if (std.mem.eql(u8, need, other.meta.name)) break true;
             } else false;
-            if (!registered) @compileError(lib.meta.name ++ " needs " ++ need ++ ", which is not registered");
+            if (!earlier) @compileError(lib.meta.name ++ " needs " ++ need ++ ", which is not registered before it");
         }
     }
     break :blk out;
@@ -179,7 +180,11 @@ pub fn build(b: *std.Build) void {
     if (with_ffmpeg) {
         var enabled: std.ArrayList([]const u8) = .empty;
         for (&libraries) |*lib| if (c.built.contains(lib.meta.name)) enabled.appendSlice(b.allocator, lib.meta.ffmpeg) catch @panic("OOM");
-        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3, .programs = programs });
+        var probes: std.ArrayList(ffmpeg.Probe) = .empty;
+        for (&libraries) |*lib| {
+            if (lib.meta.ffmpeg_probes.len > 0) probes.append(b.allocator, .{ .names = lib.meta.ffmpeg_probes, .found = c.built.contains(lib.meta.name) }) catch @panic("OOM");
+        }
+        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs });
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
         bundle.add(c, deps.items, ffmpeg_libs);
     }

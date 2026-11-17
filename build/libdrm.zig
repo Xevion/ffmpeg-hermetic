@@ -9,6 +9,7 @@ pub const meta: Meta = .{
     .version = "2.4.133",
     .ffmpeg = &.{"libdrm"},
     .ffmpeg_include_subdirs = &.{"libdrm"},
+    .ffmpeg_probes = &.{ "linux_dma_buf_h", "libdrm_getfb2" },
     .supports = Meta.support.linux,
 };
 

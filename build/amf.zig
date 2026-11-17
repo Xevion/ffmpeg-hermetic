@@ -8,7 +8,6 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "amf",
     .version = "1.5.3",
-    .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"amf"},
 };
 

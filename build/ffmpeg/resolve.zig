@@ -43,29 +43,10 @@ pub const Library = struct {
 };
 
 /// Names configure sets only while probing an enabled library, as the pinned versions answer.
-const library_probes = [_]struct { []const u8, []const []const u8 }{
-    .{ "zlib", &.{"zlib_gzip"} },
-    .{ "libdrm", &.{ "linux_dma_buf_h", "libdrm_getfb2" } },
-    .{ "ffnvcodec", &.{"cuda"} },
-    .{ "nvenc", &.{"NV_ENC_PIC_PARAMS_AV1"} },
-    .{ "nvdec", &.{"CUVIDAV1PICPARAMS"} },
-    .{ "cuvid", &.{"CUVIDAV1PICPARAMS"} },
-    .{ "libx264", &.{"libx264_hdr10"} },
-    .{ "vaapi", &.{
-        "vaapi_1",
-        "VAPictureParameterBufferHEVC",
-        "VAPictureParameterBufferVVC",
-        "VADecPictureParameterBufferVP9_bit_depth",
-        "VADecPictureParameterBufferAV1_bit_depth_idx",
-        "VAProcFilterParameterBufferHDRToneMapping",
-        "VAProcPipelineCaps_rotation_flags",
-        "VAProcPipelineCaps_blend_flags",
-        "VAEncPictureParameterBufferHEVC",
-        "VAEncPictureParameterBufferJPEG",
-        "VAEncPictureParameterBufferVP8",
-        "VAEncPictureParameterBufferVP9",
-        "VAEncPictureParameterBufferAV1",
-    } },
+pub const Probe = struct {
+    names: []const []const u8,
+    /// Whether the library is enabled, which turns the names on.
+    found: bool,
 };
 
 /// configure's probe-phase rules: the second set is disabled unless all of the first are enabled.
@@ -78,6 +59,8 @@ pub const Options = struct {
     version3: bool = false,
     /// External and hwaccel libraries to enable, by configure name (`libvpx`, `vaapi`, ...).
     libraries: []const []const u8,
+    /// Probe names of every library the build knows, enabled or not.
+    probes: []const Probe = &.{},
 };
 
 pub const State = struct {
@@ -88,6 +71,8 @@ pub const State = struct {
     checked: std.StringHashMapUnmanaged(bool) = .empty,
     /// Printed key (`HAVE_FOO`) to configure name, for every printed list.
     keys: std.StringHashMapUnmanaged([]const u8) = .empty,
+    /// Names `setFacts` or a probe has given a value.
+    given: std.StringHashMapUnmanaged(void) = .empty,
 
     /// The state after configure parses the base options, before any probe runs.
     pub fn init(gpa: std.mem.Allocator) State {
@@ -121,9 +106,8 @@ pub const State = struct {
     }
 
     /// Sets probe results from a struct of printed keys (`HAVE_FOO = true`) or bare configure
-    /// names (`libm = true`). Every ARCH_ and HAVE_ name must be given.
+    /// names (`libm = true`). Every ARCH_ and HAVE_ name must be given here or as a library probe.
     pub fn setFacts(s: *State, facts: anytype) void {
-        var given: std.StringHashMapUnmanaged(void) = .empty;
         const info = @typeInfo(@TypeOf(facts)).@"struct";
         inline for (info.field_names) |field| {
             const name = s.keys.get(field) orelse field;
@@ -131,12 +115,7 @@ pub const State = struct {
                 std.debug.panic("FFmpeg config key {s} is not in configure's lists", .{field});
             }
             s.put(name, if (@field(facts, field)) .yes else .no);
-            given.put(s.gpa, name, {}) catch @panic("OOM");
-        }
-        for ([_][]const []const u8{ data.lists.arch_list, data.lists.have_list }) |list| {
-            for (list) |name| if (!given.contains(name)) {
-                std.debug.panic("build/ffmpeg/config.zig gives no value for {s}", .{name});
-            };
+            s.given.put(s.gpa, name, {}) catch @panic("OOM");
         }
     }
 
@@ -158,9 +137,6 @@ pub const State = struct {
             if (!o.gpl and contains(&.{lists.external_library_gpl_list}, lib)) {
                 std.debug.panic("FFmpeg's {s} needs -Dgpl", .{lib});
             }
-            if (o.gpl and !o.version3 and std.mem.eql(u8, lib, "openssl")) {
-                std.debug.panic("FFmpeg accepts OpenSSL 3 in GPL builds only with -Dversion3", .{});
-            }
             if (!o.version3 and contains(&.{ lists.external_library_version3_list, lists.external_library_gplv3_list }, lib)) {
                 std.debug.panic("FFmpeg's {s} needs -Dversion3", .{lib});
             }
@@ -172,8 +148,15 @@ pub const State = struct {
             }
             s.put(lib, .yes);
         }
-        for (library_probes) |p| for (p[1]) |name| s.put(name, .unset);
-        for (library_probes) |p| if (s.enabled(p[0])) for (p[1]) |name| s.put(name, .yes);
+        for (o.probes) |p| for (p.names) |name| {
+            s.put(name, if (p.found) .yes else .unset);
+            s.given.put(s.gpa, name, {}) catch @panic("OOM");
+        };
+        for ([_][]const []const u8{ lists.arch_list, lists.have_list }) |list| {
+            for (list) |name| if (!s.given.contains(name)) {
+                std.debug.panic("build/ffmpeg/config.zig gives no value for {s}", .{name});
+            };
+        }
         for (disable_unless) |r| {
             for (r[0]) |need| if (!s.enabled(need)) {
                 for (r[1]) |name| s.put(name, .no);

@@ -8,19 +8,7 @@ const ff = @import("ffmpeg.zig");
 
 const Compile = std.Build.Step.Compile;
 
-/// The pins that are always in a bundle, before those of the libraries that went into it.
-const fixed_sources = Meta.sources(ff.meta) ++ Meta.sources(ff.nv_codec_headers);
-
-/// Archive names in link order: each appears before the libraries it needs. A bundled archive
-/// missing from this list is left out of the bundle with a warning.
-const link_order = [_][]const u8{
-    "avdevice", "avfilter", "avformat",  "avcodec",    "vpx",       "dav1d",    "aom",
-    "mp3lame",  "opus",     "SvtAv1Enc", "x264",       "x265",      "openh264", "kvazaar",
-    "ass",      "harfbuzz", "freetype",  "fribidi",    "openjp2",   "webpmux",  "webpdemux",
-    "webp",     "sharpyuv", "theoraenc", "theoradec",  "vorbisenc", "vorbis",   "ogg",
-    "zimg",     "bz2",      "lzma",      "swresample", "soxr",      "swscale",  "avutil",
-    "z",        "drm",      "va",        "c++",        "c++abi",
-};
+const ffmpeg_sources = Meta.sources(ff.meta);
 
 const Link = struct { name: []const u8, kind: []const u8 };
 const SourceEntry = struct { name: []const u8, version: []const u8, sha256: []const u8, url: []const u8 };
@@ -36,9 +24,18 @@ const Spec = struct {
     sources: []const SourceEntry,
 };
 
-/// Adds the `bundle` step. `codecs` are the external libraries that were built, `ffmpeg` the seven
-/// FFmpeg libraries whose installed headers become the bundle's include directory.
-pub fn add(c: Ctx, codecs: []const Meta.Built, ffmpeg: []const *Compile) void {
+/// One archive of a built package, placed on the link line by `linkOrder`.
+const Node = struct {
+    lib: *Compile,
+    /// Index of its package in the registry-ordered build list.
+    package: usize,
+    links: []const []const u8,
+};
+
+/// Adds the `bundle` and `bundle-check` steps. `built` is every library that was built, in
+/// registry order, and `ffmpeg` the FFmpeg libraries whose installed headers become the bundle's
+/// include directory.
+pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     if (t.os.tag != .linux or !t.abi.isGnu()) {
@@ -48,34 +45,40 @@ pub fn add(c: Ctx, codecs: []const Meta.Built, ffmpeg: []const *Compile) void {
     const bundle_rev = b.option(u32, "bundle-rev", "Revision number in the bundle's name (default: 0)") orelse 0;
     const zstd = b.lazyDependency("zstd", .{}) orelse return;
 
-    const cxx = cxxRuntime(c);
+    const packages = linkOrder(b, built);
     var archives: std.ArrayList(*Compile) = .empty;
-    var sources: std.ArrayList(Meta.Source) = .empty;
-    sources.appendSlice(b.allocator, fixed_sources) catch @panic("OOM");
-    for (codecs) |codec| {
-        var kept = false;
-        for (codec.output.archives) |a| {
-            if (!a.bundled) continue;
-            if (inList(&link_order, a.lib.name)) {
-                archives.append(b.allocator, a.lib) catch @panic("OOM");
-                kept = true;
-            } else {
-                std.log.warn("lib{s}.a is not in bundle.zig's link_order and is left out of the bundle", .{a.lib.name});
-            }
-        }
-        if (kept) sources.appendSlice(b.allocator, codec.sources) catch @panic("OOM");
+    var link: std.ArrayList(Link) = .empty;
+    for (ffmpegOrder(b, ffmpeg)) |lib| {
+        archives.append(b.allocator, lib) catch @panic("OOM");
+        link.append(b.allocator, .{ .name = lib.name, .kind = "static" }) catch @panic("OOM");
     }
-    archives.appendSlice(b.allocator, ffmpeg) catch @panic("OOM");
-    archives.appendSlice(b.allocator, &cxx) catch @panic("OOM");
+    var needs_cxx = false;
+    for (packages) |node| {
+        archives.append(b.allocator, node.lib) catch @panic("OOM");
+        link.append(b.allocator, .{ .name = node.lib.name, .kind = "static" }) catch @panic("OOM");
+        if (linksLibcpp(node.lib)) needs_cxx = true;
+    }
+    if (needs_cxx) for (cxxRuntime(c)) |lib| {
+        archives.append(b.allocator, lib) catch @panic("OOM");
+        link.append(b.allocator, .{ .name = lib.name, .kind = "static" }) catch @panic("OOM");
+    };
+    for (systemLibs(c, built)) |name| link.append(b.allocator, .{ .name = name, .kind = "dylib" }) catch @panic("OOM");
+
+    var sources: std.ArrayList(Meta.Source) = .empty;
+    sources.appendSlice(b.allocator, ffmpeg_sources) catch @panic("OOM");
+    for (built) |lib| {
+        if (bundledArchives(lib) == 0 and lib.output.archives.len > 0) continue;
+        sources.appendSlice(b.allocator, lib.sources) catch @panic("OOM");
+    }
 
     const spec: Spec = .{
         .variant = if (c.gpl) "gpl" else "lgpl",
-        .ffmpeg_version = fixed_sources[0].version,
+        .ffmpeg_version = ff.meta.version,
         .bundle_rev = bundle_rev,
         .target = b.fmt("{s}-unknown-linux-gnu", .{@tagName(t.cpu.arch)}),
         .glibc_floor = if (glibc.patch == 0) b.fmt("{d}.{d}", .{ glibc.major, glibc.minor }) else b.fmt("{d}.{d}.{d}", .{ glibc.major, glibc.minor, glibc.patch }),
         .zig = builtin.zig_version_string,
-        .link = linkList(c, archives.items),
+        .link = link.items,
         .sources = sourceList(b, sources.items),
     };
     const spec_json = std.json.Stringify.valueAlloc(b.allocator, spec, .{ .whitespace = .indent_2 }) catch @panic("OOM");
@@ -109,35 +112,139 @@ pub fn add(c: Ctx, codecs: []const Meta.Built, ffmpeg: []const *Compile) void {
             run.addPrefixedFileArg(b.fmt("{s}=", .{s.name}), c.upstream(s.zon).path(file));
         }
     }
-    for ([_][]const u8{ "libcxx", "libcxxabi" }) |dir| {
+    if (needs_cxx) for ([_][]const u8{ "libcxx", "libcxxabi" }) |dir| {
         run.addArg("--license");
         run.addPrefixedFileArg(b.fmt("{s}=", .{dir}), std.Build.LazyPath.zig_lib.path(b, b.fmt("{s}/LICENSE.TXT", .{dir})));
-    }
+    };
 
     const install = b.addInstallDirectory(.{ .source_dir = out, .install_dir = .prefix, .install_subdir = "bundle" });
     b.step("bundle", "Pack every archive, FFmpeg's headers and MANIFEST.json into <prefix>/bundle").dependOn(&install.step);
+
+    const check = b.addExecutable(.{
+        .name = "bundle_check",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("build/bundle_check.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseFast,
+        }),
+    });
+    const run_check = b.addRunArtifact(check);
+    run_check.addDirectoryArg(out);
+    _ = run_check.addOutputDirectoryArg("check");
+    run_check.addArgs(&.{ b.graph.zig_exe, b.fmt("{s}-linux-gnu.{s}", .{ @tagName(t.cpu.arch), spec.glibc_floor }) });
+    run_check.addFileArg(b.path("build/bundle_check.c"));
+    const host = b.graph.host.result;
+    run_check.addArg(if (host.cpu.arch == t.cpu.arch and host.os.tag == .linux) "run" else "link");
+    b.step("bundle-check", "Link and run a C program against the bundle, in exactly MANIFEST.json's order").dependOn(&run_check.step);
+}
+
+fn bundledArchives(lib: Meta.Built) usize {
+    var n: usize = 0;
+    for (lib.output.archives) |a| n += @intFromBool(a.bundled);
+    return n;
+}
+
+/// FFmpeg's libraries in `ff.link_order`; a library missing from it is a configure error.
+fn ffmpegOrder(b: *std.Build, libs: []const *Compile) []const *Compile {
+    var out: std.ArrayList(*Compile) = .empty;
+    for (ff.link_order) |name| {
+        for (libs) |lib| if (std.mem.eql(u8, lib.name, name)) out.append(b.allocator, lib) catch @panic("OOM");
+    }
+    if (out.items.len != libs.len) std.process.fatal("an FFmpeg library is missing from ffmpeg.zig's link_order", .{});
+    return out.items;
+}
+
+/// Whether `lib` or an archive it links compiles C++ against libc++.
+fn linksLibcpp(lib: *Compile) bool {
+    for (lib.getCompileDependencies(true)) |dep| {
+        for (dep.root_module.getGraph().modules) |mod| if (mod.link_libcpp orelse false) return true;
+    }
+    return false;
+}
+
+/// Whether package `from` needs package `to`, directly or through other packages.
+fn needsTransitively(built: []const Meta.Built, from: usize, to: usize) bool {
+    for (built[from].meta.needs) |name| {
+        const need = for (built, 0..) |lib, i| {
+            if (std.mem.eql(u8, lib.meta.name, name)) break i;
+        } else continue;
+        if (need == to or needsTransitively(built, need, to)) return true;
+    }
+    return false;
+}
+
+fn indexOfArchive(nodes: []const Node, package: usize, name: []const u8) ?usize {
+    for (nodes, 0..) |node, i| {
+        if (node.package == package and std.mem.eql(u8, node.lib.name, name)) return i;
+    }
+    return null;
+}
+
+/// Every bundled archive of `built` in link order: an archive precedes those its `links` name and
+/// every archive of a package its package needs, and otherwise registry order holds. A cycle is a
+/// configure error.
+fn linkOrder(b: *std.Build, built: []const Meta.Built) []const Node {
+    var all: std.ArrayList(Node) = .empty;
+    for (built, 0..) |lib, package| {
+        for (lib.output.archives) |a| {
+            if (a.bundled) all.append(b.allocator, .{ .lib = a.lib, .package = package, .links = a.links }) catch @panic("OOM");
+        }
+    }
+    const nodes = all.items;
+    const n = nodes.len;
+    const before = b.allocator.alloc(bool, n * n) catch @panic("OOM");
+    @memset(before, false);
+    for (nodes, 0..) |from, i| {
+        for (from.links) |name| {
+            const j = indexOfArchive(nodes, from.package, name) orelse std.debug.panic(
+                "{s}'s lib{s}.a links {s}, which that package does not bundle",
+                .{ built[from.package].meta.name, from.lib.name, name },
+            );
+            before[i * n + j] = true;
+        }
+        for (nodes, 0..) |to, j| {
+            if (from.package != to.package and needsTransitively(built, from.package, to.package)) before[i * n + j] = true;
+        }
+    }
+
+    const placed = b.allocator.alloc(bool, n) catch @panic("OOM");
+    @memset(placed, false);
+    var out: std.ArrayList(Node) = .empty;
+    while (out.items.len < n) {
+        const next = for (0..n) |k| {
+            if (placed[k]) continue;
+            const ready = for (0..n) |i| {
+                if (before[i * n + k] and !placed[i]) break false;
+            } else true;
+            if (ready) break k;
+        } else {
+            var names: std.ArrayList(u8) = .empty;
+            for (nodes, placed) |node, done| if (!done) names.print(b.allocator, " lib{s}.a", .{node.lib.name}) catch @panic("OOM");
+            std.process.fatal("no link order exists for:{s}", .{names.items});
+        };
+        placed[next] = true;
+        out.append(b.allocator, nodes[next]) catch @panic("OOM");
+    }
+    return out.items;
+}
+
+/// FFmpeg's own system libraries, then the ones the bundled packages ask for, once each.
+fn systemLibs(c: Ctx, built: []const Meta.Built) []const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const ffmpeg_base = [_][]const u8{ "pthread", "m", "dl" };
+    out.appendSlice(c.b.allocator, &ffmpeg_base) catch @panic("OOM");
+    for (built) |lib| {
+        if (bundledArchives(lib) == 0) continue;
+        for (lib.meta.system_libs.forTarget(c)) |name| {
+            if (!inList(out.items, name)) out.append(c.b.allocator, name) catch @panic("OOM");
+        }
+    }
+    return out.items;
 }
 
 fn inList(list: []const []const u8, name: []const u8) bool {
     for (list) |item| if (std.mem.eql(u8, item, name)) return true;
     return false;
-}
-
-fn hasArchive(archives: []const *Compile, name: []const u8) bool {
-    for (archives) |a| if (std.mem.eql(u8, a.name, name)) return true;
-    return false;
-}
-
-fn linkList(c: Ctx, archives: []const *Compile) []const Link {
-    const b = c.b;
-    var out: std.ArrayList(Link) = .empty;
-    for (link_order) |name| {
-        if (hasArchive(archives, name)) out.append(b.allocator, .{ .name = name, .kind = "static" }) catch @panic("OOM");
-    }
-    for ([_][]const u8{ "pthread", "rt", "m", "dl" }) |name| {
-        out.append(b.allocator, .{ .name = name, .kind = "dylib" }) catch @panic("OOM");
-    }
-    return out.items;
 }
 
 fn sourceList(b: *std.Build, sources: []const Meta.Source) []const SourceEntry {

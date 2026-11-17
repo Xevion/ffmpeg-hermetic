@@ -14,20 +14,16 @@ pub const meta: Meta = .{
     .licenses = &.{ "COPYING.GPLv2", "COPYING.GPLv3", "COPYING.LGPLv2.1", "COPYING.LGPLv3", "LICENSE.md" },
 };
 
-pub const nv_codec_headers: Meta = .{
-    .name = "nv_codec_headers",
-    .version = "n12.1.14.0",
-};
-
 /// Static libraries in link order: each depends only on those after it.
 pub const link_order = [_][]const u8{ "avdevice", "avfilter", "avformat", "avcodec", "swresample", "swscale", "avutil" };
 
-/// Header-only NVIDIA support from nv-codec-headers, enabled wherever FFmpeg supports it.
-const nvidia = [_][]const u8{ "ffnvcodec", "nvenc", "nvdec", "cuvid", "cuda_llvm" };
+pub const Probe = resolve.Probe;
 
 pub const Options = struct {
     /// configure names of the external libraries in `deps` (`libvpx`, `vaapi`).
     libraries: []const []const u8,
+    /// Probe names of every registry library, built or not.
+    probes: []const Probe = &.{},
     /// `--enable-version3`.
     version3: bool = false,
     /// Also build ffmpeg and ffprobe against the archives.
@@ -39,16 +35,12 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     const t = c.target.result;
     const src = c.upstream("ffmpeg");
 
-    var enabled: std.ArrayList([]const u8) = .empty;
-    enabled.appendSlice(b.allocator, o.libraries) catch @panic("OOM");
-    if (t.os.tag == .linux or t.os.tag == .windows) enabled.appendSlice(b.allocator, &nvidia) catch @panic("OOM");
-
     var state: resolve.State = .init(b.allocator);
     config.apply(c, &state);
-    state.configure(.{ .gpl = c.gpl, .version3 = o.version3, .libraries = enabled.items });
+    state.configure(.{ .gpl = c.gpl, .version3 = o.version3, .libraries = o.libraries, .probes = o.probes });
     state.resolve();
 
-    const headers = config.add(c, &state, .{ .gpl = c.gpl, .version3 = o.version3, .libraries = enabled.items });
+    const headers = config.add(c, &state, .{ .gpl = c.gpl, .version3 = o.version3, .libraries = o.libraries });
     const wf = b.addWriteFiles();
     var generated: std.ArrayList([2][]const u8) = .empty;
     generated.append(b.allocator, .{ "config_components.h", state.componentsFile(false) }) catch @panic("OOM");
@@ -85,7 +77,6 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
             dep_includes.append(b.allocator, tree.path(b, sub)) catch @panic("OOM");
         }
     }
-    dep_includes.append(b.allocator, c.upstream("nv_codec_headers").path("include")) catch @panic("OOM");
 
     var manifest: std.ArrayList([]const u8) = .empty;
     for ([_]struct { *std.Build.Step.ConfigHeader, []const u8 }{

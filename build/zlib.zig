@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .version = "1.3.2",
     .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"zlib"},
+    .ffmpeg_probes = &.{"zlib_gzip"},
 };
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

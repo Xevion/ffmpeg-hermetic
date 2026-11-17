@@ -25,6 +25,9 @@ ffmpeg: []const []const u8 = &.{},
 /// Subdirectories of its include tree that the library's pkg-config Cflags put on the include
 /// path, because FFmpeg includes those headers without the directory.
 ffmpeg_include_subdirs: []const []const u8 = &.{},
+/// Names configure sets only while probing this library, as the pinned version answers
+/// (`libx264_hdr10`, vaapi's `VA*` types). They are on when the library is built, unset otherwise.
+ffmpeg_probes: []const []const u8 = &.{},
 /// Libraries a consumer of its archives links besides the package's own.
 system_libs: SystemLibs = .{},
 license: License = .lgpl,
@@ -86,6 +89,10 @@ pub const support = struct {
 
     pub fn linux(c: Ctx) bool {
         return c.os() == .linux;
+    }
+
+    pub fn linuxOrWindows(c: Ctx) bool {
+        return c.os() == .linux or c.os() == .windows;
     }
 
     pub fn notMsvc(c: Ctx) bool {
