@@ -35,8 +35,8 @@
             .hash = "N-V-__8AAH8jNwDPTrkJ1_Rx__jQMDeVEmuPIIHps-wt3xza",
         },
         .libdrm = .{
-            .url = "https://dri.freedesktop.org/libdrm/libdrm-2.4.133.tar.xz",
-            .hash = "N-V-__8AAH_vLAA0isbGnQEJR-JmLwtvA5a-t8KkPYOryDuC",
+            .url = "https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz",
+            .hash = "N-V-__8AANjyLAAD6mSYXt_uTwOF3uQieo212HQcTcIZdXMi",
         },
         .nv_codec_headers = .{
             .url = "https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n12.1.14.0.tar.gz",
