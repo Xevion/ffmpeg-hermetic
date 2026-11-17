@@ -1,0 +1,5 @@
+# Tests expected to fail under tools/fate.sh, one per line.
+# source runs git grep over the enclosing repository, which is not an FFmpeg checkout here.
+fate-source
+# GPL builds: x264 is built for 8-bit only, so its 10-bit HDR10 passthrough test cannot open the encoder.
+fate-libx264-hdr10

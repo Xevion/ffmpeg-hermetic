@@ -16718,3 +16718,10 @@ pub const libraries = [_]T.Library{
         .{ "libavdevice/xv.c", .c, "", &.{"xv_outdev"}, &.{} },
     } },
 };
+
+/// fftools' programs: C sources and the resources (.html, .css) embedded as C arrays.
+pub const programs = [_]struct { name: []const u8, sources: []const []const u8, resources: []const []const u8 }{
+    .{ .name = "ffmpeg", .sources = &.{"fftools/cmdutils.c", "fftools/ffmpeg.c", "fftools/ffmpeg_dec.c", "fftools/ffmpeg_demux.c", "fftools/ffmpeg_enc.c", "fftools/ffmpeg_filter.c", "fftools/ffmpeg_hw.c", "fftools/ffmpeg_mux.c", "fftools/ffmpeg_mux_init.c", "fftools/ffmpeg_opt.c", "fftools/ffmpeg_sched.c", "fftools/graph/graphprint.c", "fftools/opt_common.c", "fftools/resources/resman.c", "fftools/sync_queue.c", "fftools/textformat/avtextformat.c", "fftools/textformat/tf_compact.c", "fftools/textformat/tf_default.c", "fftools/textformat/tf_flat.c", "fftools/textformat/tf_ini.c", "fftools/textformat/tf_json.c", "fftools/textformat/tf_mermaid.c", "fftools/textformat/tf_xml.c", "fftools/textformat/tw_avio.c", "fftools/textformat/tw_buffer.c", "fftools/textformat/tw_stdout.c", "fftools/thread_queue.c"}, .resources = &.{"fftools/resources/graph.css", "fftools/resources/graph.html"} },
+    .{ .name = "ffplay", .sources = &.{"fftools/cmdutils.c", "fftools/ffplay.c", "fftools/ffplay_renderer.c", "fftools/opt_common.c"}, .resources = &.{} },
+    .{ .name = "ffprobe", .sources = &.{"fftools/cmdutils.c", "fftools/ffprobe.c", "fftools/opt_common.c", "fftools/textformat/avtextformat.c", "fftools/textformat/tf_compact.c", "fftools/textformat/tf_default.c", "fftools/textformat/tf_flat.c", "fftools/textformat/tf_ini.c", "fftools/textformat/tf_json.c", "fftools/textformat/tf_mermaid.c", "fftools/textformat/tf_xml.c", "fftools/textformat/tw_avio.c", "fftools/textformat/tw_buffer.c", "fftools/textformat/tw_stdout.c"}, .resources = &.{} },
+};

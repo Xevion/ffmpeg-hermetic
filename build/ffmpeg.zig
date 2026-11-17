@@ -5,6 +5,7 @@ const Ctx = @import("Ctx.zig");
 const Nasm = @import("Nasm.zig");
 const config = @import("ffmpeg/config.zig");
 const resolve = @import("ffmpeg/resolve.zig");
+const programs = @import("ffmpeg/programs.zig");
 
 /// Static libraries in link order: each depends only on those after it.
 pub const link_order = [_][]const u8{ "avdevice", "avfilter", "avformat", "avcodec", "swresample", "swscale", "avutil" };
@@ -17,6 +18,8 @@ pub const Options = struct {
     libraries: []const []const u8,
     /// `--enable-version3`.
     version3: bool = false,
+    /// Also build ffmpeg and ffprobe against the archives.
+    programs: bool = false,
 };
 
 pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Options) []const *std.Build.Step.Compile {
@@ -162,6 +165,18 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Optio
         }
         out.append(b.allocator, artifact) catch @panic("OOM");
     }
+
+    if (o.programs) programs.add(c, .{
+        .headers = headers,
+        .gen = gen,
+        .src = src,
+        .includes = dep_includes.items,
+        .flags = &common_flags,
+        .embed = embed,
+        .compress = state.enabled("resource_compression"),
+        .libs = out.items,
+        .deps = deps,
+    });
 
     std.mem.sort([]const u8, manifest.items, {}, struct {
         fn lt(_: void, x: []const u8, y: []const u8) bool {

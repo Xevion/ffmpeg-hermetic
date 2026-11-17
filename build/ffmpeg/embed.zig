@@ -1,7 +1,8 @@
 //! Host tool standing in for FFmpeg's `gzip -nc9` plus `ffbuild/bin2c`: compresses a file into a
 //! gzip stream (unless `raw`) and writes it as `ff_<name>_data[]` and `ff_<name>_len` C definitions.
 //! With `source` it stands in for `tools/source2c` instead: `const char *ff_source_<name>`.
-//! usage: embed <input> <output.c> <name> [raw|source]
+//! With `minify` the input first gets the `sed`/`tr` CSS minification of ffbuild/common.mak.
+//! usage: embed <input> <output.c> <name> [raw|source|minify [raw]]
 const std = @import("std");
 const flate = std.compress.flate;
 
@@ -9,11 +10,15 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
-    const mode = if (args.len == 5) args[4] else "";
-    if (args.len != 4 and !(args.len == 5 and (std.mem.eql(u8, mode, "raw") or std.mem.eql(u8, mode, "source")))) return error.Usage;
+    const mode = if (args.len >= 5) args[4] else "";
+    const minify = std.mem.eql(u8, mode, "minify");
+    const raw = std.mem.eql(u8, mode, "raw") or (minify and args.len == 6 and std.mem.eql(u8, args[5], "raw"));
+    const usage_ok = args.len == 4 or (args.len == 5 and (raw or minify or std.mem.eql(u8, mode, "source"))) or (args.len == 6 and minify and raw);
+    if (!usage_ok) return error.Usage;
     const cwd = std.Io.Dir.cwd();
 
-    const input = try cwd.readFileAlloc(io, args[1], arena, .unlimited);
+    const source = try cwd.readFileAlloc(io, args[1], arena, .unlimited);
+    const input = if (minify) try minifyCss(arena, source) else source;
 
     if (std.mem.eql(u8, mode, "source")) {
         var out: std.Io.Writer.Allocating = try .initCapacity(arena, input.len * 2 + 128);
@@ -33,7 +38,7 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    const data = if (args.len == 5) input else blk: {
+    const data = if (raw) input else blk: {
         var compressed: std.Io.Writer.Allocating = try .initCapacity(arena, input.len / 4 + 64);
         const window = try arena.alloc(u8, flate.max_window_len);
         var compress = try flate.Compress.init(&compressed.writer, window, .gzip, .best);
@@ -47,4 +52,31 @@ pub fn main(init: std.process.Init) !void {
     for (data) |byte| try out.writer.print("0x{x:0>2}, ", .{byte});
     try out.writer.print("0x00 }};\nconst unsigned int ff_{s}_len = {d};\n", .{ args[3], data.len });
     try cwd.writeFile(io, .{ .sub_path = args[2], .data = out.written() });
+}
+
+/// Greedy per-line `/* */` removal, newlines to spaces, runs of spaces squeezed, one leading and
+/// trailing space trimmed: the result of the sed and tr pipeline in ffbuild/common.mak.
+fn minifyCss(arena: std.mem.Allocator, input: []const u8) ![]const u8 {
+    var joined: std.ArrayList(u8) = .empty;
+    var lines = std.mem.splitScalar(u8, input, '\n');
+    while (lines.next()) |line| {
+        var rest = line;
+        while (std.mem.indexOf(u8, rest, "/*")) |open| {
+            const close = std.mem.lastIndexOf(u8, rest, "*/") orelse break;
+            if (close < open + 2) break;
+            try joined.appendSlice(arena, rest[0..open]);
+            rest = rest[close + 2 ..];
+        }
+        try joined.appendSlice(arena, rest);
+        try joined.append(arena, ' ');
+    }
+    var squeezed: std.ArrayList(u8) = .empty;
+    for (joined.items) |ch| {
+        if (ch == ' ' and squeezed.items.len > 0 and squeezed.items[squeezed.items.len - 1] == ' ') continue;
+        try squeezed.append(arena, ch);
+    }
+    var out: []const u8 = squeezed.items;
+    if (std.mem.startsWith(u8, out, " ")) out = out[1..];
+    if (std.mem.endsWith(u8, out, " ")) out = out[0 .. out.len - 1];
+    return out;
 }

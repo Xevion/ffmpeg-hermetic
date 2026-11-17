@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
     const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else b.option(bool, "ffmpeg", "Build FFmpeg on top of the libraries (default: true)") orelse true;
 
     const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
+    const programs = b.option(bool, "programs", "Also build the ffmpeg and ffprobe programs (needs the ffmpeg graph)") orelse false;
     var deps: std.ArrayList(*std.Build.Step.Compile) = .empty;
     for (libraries) |lib| {
         const wanted = b.option(bool, lib.name, b.fmt("Build {s} and enable it in FFmpeg (default: true)", .{lib.name})) orelse true;
@@ -121,7 +122,7 @@ pub fn build(b: *std.Build) void {
     if (with_ffmpeg) {
         var enabled: std.ArrayList([]const u8) = .empty;
         for (libraries) |lib| if (c.built.contains(lib.name)) enabled.appendSlice(b.allocator, lib.ffmpeg) catch @panic("OOM");
-        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3 });
+        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .version3 = version3, .programs = programs });
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
         bundle.add(c, deps.items, ffmpeg_libs);
     }
