@@ -35,12 +35,13 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     const t = c.target.result;
     const src = c.upstream("ffmpeg");
 
+    const libraries = std.mem.concat(b.allocator, []const u8, &.{ o.libraries, config.systemLibraries(t) }) catch @panic("OOM");
     var state: resolve.State = .init(b.allocator);
     config.apply(c, &state);
-    state.configure(.{ .gpl = c.gpl, .version3 = o.version3, .libraries = o.libraries, .probes = o.probes });
+    state.configure(.{ .gpl = c.gpl, .version3 = o.version3, .libraries = libraries, .probes = o.probes });
     state.resolve();
 
-    const headers = config.add(c, &state, .{ .gpl = c.gpl, .version3 = o.version3, .libraries = o.libraries });
+    const headers = config.add(c, &state, .{ .gpl = c.gpl, .version3 = o.version3, .libraries = libraries });
     const wf = b.addWriteFiles();
     var generated: std.ArrayList([2][]const u8) = .empty;
     generated.append(b.allocator, .{ "config_components.h", state.componentsFile(false) }) catch @panic("OOM");
@@ -71,6 +72,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     var dep_archives: std.ArrayList(*std.Build.Step.Compile) = .empty;
     var base_flags: std.ArrayList([]const u8) = .empty;
     base_flags.appendSlice(b.allocator, &common_flags) catch @panic("OOM");
+    base_flags.appendSlice(b.allocator, osFlags(t)) catch @panic("OOM");
     for (deps) |dep| {
         for ([_][]const []const u8{ dep.meta.ffmpeg_defines, if (t.os.tag == .windows) dep.meta.ffmpeg_windows_defines else &.{} }) |defines| {
             for (defines) |d| base_flags.append(b.allocator, b.fmt("-D{s}", .{d})) catch @panic("OOM");
@@ -84,19 +86,19 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     }
 
     var manifest: std.ArrayList([]const u8) = .empty;
+    const config_step = b.step("ffmpeg-config", "Install only FFmpeg's resolved configuration to <prefix>/share/ffmpeg-zig/config");
     for ([_]struct { *std.Build.Step.ConfigHeader, []const u8 }{
         .{ headers.config_h, "config.h" },
         .{ headers.config_asm, "config.asm" },
         .{ headers.avconfig_h, "libavutil/avconfig.h" },
     }) |entry| {
         if (entry[0] == headers.config_asm and !state.enabled("x86asm")) continue;
-        b.getInstallStep().dependOn(&b.addInstallFile(entry[0].getOutputFile(), b.fmt("share/ffmpeg-zig/config/{s}", .{entry[1]})).step);
+        installConfig(b, config_step, entry[0].getOutputFile(), entry[1]);
     }
-    for (generated.items) |g| {
-        b.getInstallStep().dependOn(&b.addInstallFile(gen.path(b, g[0]), b.fmt("share/ffmpeg-zig/config/{s}", .{g[0]})).step);
-    }
+    for (generated.items) |g| installConfig(b, config_step, gen.path(b, g[0]), g[0]);
 
     const dirs = archDirs(&state, t);
+    const global_includes = config.compatIncludes(t, &state);
     var out: std.ArrayList(*std.Build.Step.Compile) = .empty;
     for (resolve.data.libraries) |lib| {
         if (!state.enabled(lib.name)) continue;
@@ -108,7 +110,8 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
 
         const mod = c.module(.{});
         for (srcs.c.items, 0..) |group, i| {
-            const setup: Setup = .{ .headers = headers, .gen = gen, .src = src, .includes = group.includes, .deps = dep_includes.items };
+            const includes = std.mem.concat(b.allocator, []const u8, &.{ global_includes, group.includes }) catch @panic("OOM");
+            const setup: Setup = .{ .headers = headers, .gen = gen, .src = src, .includes = includes, .deps = dep_includes.items };
             if (group.includes.len == 0) {
                 Setup.apply(mod, setup);
                 mod.addCSourceFiles(.{ .root = src.path(""), .files = group.files, .flags = flags.items });
@@ -118,14 +121,14 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
                         .config_headers = &.{ headers.config_h, headers.avconfig_h },
                         .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
                             &.{ gen, src.path("") },
-                            c.includeDirs(src.path(""), group.includes),
+                            c.includeDirs(src.path(""), includes),
                             dep_includes.items,
                         }) catch @panic("OOM"),
                     },
                     .groups = &.{.{ .root = src.path(""), .files = group.files, .flags = flags.items }},
                 });
             }
-            for (group.files) |f| manifest.append(b.allocator, b.fmt("{s} c {s} {s}", .{ lib.name, joinOrDash(b, group.includes), f })) catch @panic("OOM");
+            for (group.files) |f| manifest.append(b.allocator, b.fmt("{s} c {s} {s}", .{ lib.name, joinOrDash(b, includes), f })) catch @panic("OOM");
         }
 
         if (srcs.nasm.items.len > 0) {
@@ -134,6 +137,8 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
                 .files = srcs.nasm.items,
                 .include_dirs = &.{ gen, src.path(""), src.path(b.fmt("lib{s}/x86", .{lib.name})) },
                 .preincludes = &.{headers.config_asm.getOutputFile()},
+                // configure's X86ASMFLAGS: x86inc prefixes symbols with `_` when PREFIX is defined.
+                .flags = if (t.os.tag.isDarwin()) &.{"-DPREFIX"} else &.{},
             });
         }
         if (srcs.gas.items.len > 0) {
@@ -176,16 +181,22 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
         out.append(b.allocator, artifact) catch @panic("OOM");
     }
 
+    var system_libs: std.ArrayList([]const u8) = .empty;
+    system_libs.appendSlice(b.allocator, config.systemLinkLibraries(t)) catch @panic("OOM");
+    for (deps) |dep| for (dep.meta.system_libs.forTarget(c)) |name| {
+        if (!inList(system_libs.items, name)) system_libs.append(b.allocator, name) catch @panic("OOM");
+    };
     if (o.programs) programs.add(c, .{
         .headers = headers,
         .gen = gen,
         .src = src,
-        .includes = dep_includes.items,
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{ c.includeDirs(src.path(""), global_includes), dep_includes.items }) catch @panic("OOM"),
         .flags = base_flags.items,
         .embed = embed,
         .compress = state.enabled("resource_compression"),
         .libs = out.items,
         .deps = dep_archives.items,
+        .system_libs = system_libs.items,
     });
 
     std.mem.sort([]const u8, manifest.items, {}, struct {
@@ -195,8 +206,14 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     }.lt);
     const listing = std.mem.join(b.allocator, "\n", manifest.items) catch @panic("OOM");
     const sources_txt = b.addWriteFiles().add("sources.txt", b.fmt("{s}\n", .{listing}));
-    b.getInstallStep().dependOn(&b.addInstallFile(sources_txt, "share/ffmpeg-zig/config/sources.txt").step);
+    installConfig(b, config_step, sources_txt, "sources.txt");
     return out.items;
+}
+
+fn installConfig(b: *std.Build, config_step: *std.Build.Step, file: std.Build.LazyPath, name: []const u8) void {
+    const install = b.addInstallFile(file, b.fmt("share/ffmpeg-zig/config/{s}", .{name}));
+    b.getInstallStep().dependOn(&install.step);
+    config_step.dependOn(&install.step);
 }
 
 /// The library subdirectories whose Makefiles FFmpeg includes: `$(ARCH)` and `$(INTRINSICS)`.
@@ -238,6 +255,11 @@ const Setup = struct {
     }
 };
 
+fn inList(list: []const []const u8, name: []const u8) bool {
+    for (list) |item| if (std.mem.eql(u8, item, name)) return true;
+    return false;
+}
+
 fn joinOrDash(b: *std.Build, items: []const []const u8) []const u8 {
     if (items.len == 0) return "-";
     return std.mem.join(b.allocator, ",", items) catch @panic("OOM");
@@ -268,12 +290,23 @@ fn addCuda(c: Ctx, mod: *std.Build.Module, src: *std.Build.Dependency, embed: *s
     mod.addCSourceFile(.{ .file = c_file });
 }
 
+/// The flags configure adds for the target's OS and libc.
+fn osFlags(t: std.Target) []const []const u8 {
+    const posix = [_][]const u8{ "-D_POSIX_C_SOURCE=200112", "-D_XOPEN_SOURCE=600" };
+    return switch (t.os.tag) {
+        .windows => if (t.abi == .msvc)
+            &.{ "-DWIN32_LEAN_AND_MEAN", "-D_USE_MATH_DEFINES", "-D_CRT_SECURE_NO_WARNINGS", "-D_CRT_NONSTDC_NO_WARNINGS", "-D_WIN32_WINNT=0x0600" }
+        else
+            &(.{ "-DWIN32_LEAN_AND_MEAN", "-U__STRICT_ANSI__" } ++ posix),
+        .macos, .ios, .tvos, .watchos, .visionos => &.{"-fno-common"},
+        else => &posix,
+    };
+}
+
 const common_flags = [_][]const u8{
     "-D_ISOC11_SOURCE",
     "-D_FILE_OFFSET_BITS=64",
     "-D_LARGEFILE_SOURCE",
-    "-D_POSIX_C_SOURCE=200112",
-    "-D_XOPEN_SOURCE=600",
     "-DPIC",
     "-DZLIB_CONST",
     "-DHAVE_AV_CONFIG_H",

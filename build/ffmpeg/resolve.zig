@@ -57,6 +57,8 @@ const disable_unless = [_]struct { []const []const u8, []const []const u8 }{
 /// configure's probes that need two libraries: the second set is enabled when all of the first are.
 const enable_when = [_]struct { []const []const u8, []const []const u8 }{
     .{ &.{ "opencl", "vaapi" }, &.{"opencl_vaapi_intel_media"} },
+    .{ &.{ "opencl", "d3d11va" }, &.{"opencl_d3d11"} },
+    .{ &.{ "opencl", "dxva2" }, &.{"opencl_dxva2"} },
 };
 
 pub const Options = struct {
@@ -124,6 +126,15 @@ pub const State = struct {
         }
     }
 
+    /// Sets names configure assigns only while probing and never prints: on when found, otherwise
+    /// left as option parsing set them (`libmfx` is `no`, most are unset).
+    pub fn setProbes(s: *State, p: Probe) void {
+        for (p.names) |name| {
+            if (p.found) s.put(name, .yes) else if (!s.values.contains(name)) s.put(name, .unset);
+            s.given.put(s.gpa, name, {}) catch @panic("OOM");
+        }
+    }
+
     /// Applies the license and library options, then the probe-phase logic that depends on them.
     pub fn configure(s: *State, o: Options) void {
         if (o.gpl) {
@@ -153,10 +164,7 @@ pub const State = struct {
             }
             s.put(lib, .yes);
         }
-        for (o.probes) |p| for (p.names) |name| {
-            s.put(name, if (p.found) .yes else .unset);
-            s.given.put(s.gpa, name, {}) catch @panic("OOM");
-        };
+        for (o.probes) |p| s.setProbes(p);
         for ([_][]const []const u8{ lists.arch_list, lists.have_list }) |list| {
             for (list) |name| if (!s.given.contains(name)) {
                 std.debug.panic("build/ffmpeg/config.zig gives no value for {s}", .{name});

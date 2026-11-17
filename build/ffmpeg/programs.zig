@@ -22,6 +22,8 @@ pub const Inputs = struct {
     libs: []const *std.Build.Step.Compile,
     /// External library archives; FFmpeg's archives leave them unresolved.
     deps: []const *std.Build.Step.Compile,
+    /// System libraries FFmpeg's and the external libraries' archives need.
+    system_libs: []const []const u8,
 };
 
 /// The programs this build produces, by fftools name.
@@ -29,7 +31,6 @@ const built = [_][]const u8{ "ffmpeg", "ffprobe" };
 
 pub fn add(c: Ctx, in: Inputs) void {
     const b = c.b;
-    if (c.os() != .linux) std.debug.panic("FFmpeg's programs are only wired for linux, not {t}", .{c.os()});
     // Only the libraries define HAVE_AV_CONFIG_H; with it the installed headers drop their version.h.
     var flags: std.ArrayList([]const u8) = .empty;
     for (in.flags) |f| if (!std.mem.eql(u8, f, "-DHAVE_AV_CONFIG_H")) flags.append(b.allocator, f) catch @panic("OOM");
@@ -47,8 +48,12 @@ pub fn add(c: Ctx, in: Inputs) void {
 
         for (in.libs) |lib| mod.linkLibrary(lib);
         for (in.deps) |lib| mod.linkLibrary(lib);
+        for (in.system_libs) |name| mod.linkSystemLibrary(name, .{});
+        // fftools' CommandLineToArgvW, as configure's EXTRALIBS-ffmpeg and EXTRALIBS-ffprobe.
+        if (c.isWindows()) mod.linkSystemLibrary("shell32", .{});
 
         const exe = b.addExecutable(.{ .name = prog.name, .root_module = mod });
+        if (c.libc_file) |file| exe.setLibCFile(file);
         b.installArtifact(exe);
     }
 }

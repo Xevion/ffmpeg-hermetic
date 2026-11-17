@@ -1,6 +1,6 @@
 //! Host tool that packs built archives and headers into an ffoxide bundle: a directory with
 //! MANIFEST.json, plus a reproducible `<name>.tar.zst` and its `.sha256`.
-//! usage: bundle_pack <spec.json> <out-dir> [--lib <archive>]... [--include <dir>]... [--license <name>=<file>]...
+//! usage: bundle_pack <spec.json> <out-dir> [--lib <file name>=<archive>]... [--include <dir>]... [--license <name>=<file>]...
 const std = @import("std");
 const Io = std.Io;
 const sha256 = std.crypto.hash.sha2.Sha256;
@@ -15,7 +15,7 @@ extern fn ZSTD_getErrorName(code: usize) [*:0]const u8;
 const zstd_compression_level = 100;
 const zstd_level = 19;
 
-/// System libraries a bundle may ask the consumer's linker for.
+/// System libraries a Linux bundle may ask the consumer's linker for.
 const dylib_allowlist = [_][]const u8{ "m", "pthread", "dl", "rt", "c" };
 
 const Link = struct { name: []const u8, kind: []const u8 };
@@ -27,6 +27,7 @@ const Spec = struct {
     bundle_rev: u32,
     target: []const u8,
     glibc_floor: []const u8,
+    suffix: []const u8,
     zig: []const u8,
     link: []const Link,
     sources: []const Source,
@@ -74,8 +75,9 @@ pub fn main(init: std.process.Init) !void {
         const flag = args[i];
         const value = args[i + 1];
         if (std.mem.eql(u8, flag, "--lib")) {
-            const data = try normalizeArchive(arena, try cwd.readFileAlloc(io, value, arena, .unlimited));
-            try files.append(arena, .{ .path = try std.fmt.allocPrint(arena, "lib/{s}", .{std.fs.path.basename(value)}), .data = data });
+            const eq = std.mem.indexOfScalar(u8, value, '=') orelse return error.Usage;
+            const data = try normalizeArchive(arena, try cwd.readFileAlloc(io, value[eq + 1 ..], arena, .unlimited));
+            try files.append(arena, .{ .path = try std.fmt.allocPrint(arena, "lib/{s}", .{value[0..eq]}), .data = data });
         } else if (std.mem.eql(u8, flag, "--include")) {
             try addTree(io, arena, &files, value, "include");
         } else if (std.mem.eql(u8, flag, "--license")) {
@@ -102,8 +104,8 @@ pub fn main(init: std.process.Init) !void {
     }
     const digest = std.fmt.bytesToHex(outer.finalResult(), .lower);
     const recipe = digest[0..12];
-    const name = try std.fmt.allocPrint(arena, "ffoxide-ffmpeg-{s}-r{d}-{s}-{s}-glibc{s}", .{
-        spec.ffmpeg_version, spec.bundle_rev, recipe, spec.variant, spec.glibc_floor,
+    const name = try std.fmt.allocPrint(arena, "ffoxide-ffmpeg-{s}-r{d}-{s}-{s}-{s}", .{
+        spec.ffmpeg_version, spec.bundle_rev, recipe, spec.variant, spec.suffix,
     });
 
     const manifest: Manifest = .{
@@ -164,14 +166,21 @@ fn inList(list: []const []const u8, name: []const u8) bool {
 }
 
 fn isArchive(path: []const u8) bool {
-    return std.mem.startsWith(u8, path, "lib/") and std.mem.endsWith(u8, path, ".a");
+    return std.mem.startsWith(u8, path, "lib/");
+}
+
+/// The link name of an archive: `lib/lib<name>.a`, or `lib/<name>.lib` for msvc.
+fn stem(path: []const u8) []const u8 {
+    const file = path["lib/".len..];
+    if (std.mem.endsWith(u8, file, ".lib")) return file[0 .. file.len - ".lib".len];
+    return file["lib".len .. file.len - ".a".len];
 }
 
 /// Every static link entry must be a shipped archive, and every shipped archive must be linked.
 fn checkLink(spec: Spec, files: []const File) !void {
     for (spec.link) |entry| {
         if (std.mem.eql(u8, entry.kind, "dylib")) {
-            if (!inList(&dylib_allowlist, entry.name)) {
+            if (std.mem.endsWith(u8, spec.target, "-linux-gnu") and !inList(&dylib_allowlist, entry.name)) {
                 std.log.err("link entry {s} is not an allowed system library", .{entry.name});
                 return error.BadLink;
             }
@@ -179,20 +188,17 @@ fn checkLink(spec: Spec, files: []const File) !void {
         }
         var found = false;
         for (files) |f| {
-            if (!isArchive(f.path)) continue;
-            const stem = f.path["lib/lib".len .. f.path.len - ".a".len];
-            if (std.mem.eql(u8, stem, entry.name)) found = true;
+            if (isArchive(f.path) and std.mem.eql(u8, stem(f.path), entry.name)) found = true;
         }
         if (!found) {
-            std.log.err("link entry {s} has no lib/lib{s}.a", .{ entry.name, entry.name });
+            std.log.err("link entry {s} has no archive in lib/", .{entry.name});
             return error.BadLink;
         }
     }
     for (files) |f| {
         if (!isArchive(f.path)) continue;
-        const stem = f.path["lib/lib".len .. f.path.len - ".a".len];
         const linked = for (spec.link) |entry| {
-            if (std.mem.eql(u8, entry.kind, "static") and std.mem.eql(u8, entry.name, stem)) break true;
+            if (std.mem.eql(u8, entry.kind, "static") and std.mem.eql(u8, entry.name, stem(f.path))) break true;
         } else false;
         if (!linked) {
             std.log.err("{s} is shipped but missing from the link list", .{f.path});
@@ -244,13 +250,16 @@ const ar_header_len = 60;
 const ArMember = struct { name: []const u8, data: []const u8 };
 
 /// Rewrites a GNU archive so it depends only on its objects: member names lose their build-cache
-/// directory, and ownership, mode and timestamps are fixed. The symbol table is rebuilt for the
-/// new member offsets.
-fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]u8 {
+/// directory, and ownership, mode and timestamps are fixed. The symbol table, and the second
+/// linker member COFF archives carry after it, are rebuilt for the new member offsets.
+fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]const u8 {
     if (!std.mem.startsWith(u8, input, ar_magic)) return error.NotAnArchive;
+    // Darwin's BSD archives from zig already hold bare member names and zeroed metadata.
+    if (std.mem.startsWith(u8, input[ar_magic.len..], "#1/")) return input;
     var members: std.ArrayList(ArMember) = .empty;
     var long_names: []const u8 = "";
     var symtab: []const u8 = "";
+    var coff_symtab: []const u8 = "";
     var offsets: std.ArrayList(usize) = .empty;
     var pos: usize = ar_magic.len;
     while (pos < input.len) {
@@ -260,14 +269,15 @@ fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]u8 {
         const body = input[pos + ar_header_len ..][0..size];
         const raw = std.mem.trimEnd(u8, header[0..16], " ");
         if (std.mem.eql(u8, raw, "/")) {
-            symtab = body;
+            if (symtab.len == 0) symtab = body else coff_symtab = body;
         } else if (std.mem.eql(u8, raw, "//")) {
             long_names = body;
         } else {
             var name = raw;
             if (raw.len > 1 and raw[0] == '/') {
                 const start = try std.fmt.parseInt(usize, raw[1..], 10);
-                const end = std.mem.indexOfScalarPos(u8, long_names, start, '\n') orelse return error.BadLongName;
+                // GNU ends each long name with "/\n", COFF archives with a NUL.
+                const end = std.mem.indexOfAnyPos(u8, long_names, start, "\n\x00") orelse return error.BadLongName;
                 name = long_names[start..end];
             }
             name = std.mem.trimEnd(u8, name, "/");
@@ -296,6 +306,7 @@ fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]u8 {
     try out.appendSlice(arena, ar_magic);
     var layout = ar_magic.len;
     if (symtab_len > 0) layout += ar_header_len + symtab_len + (symtab_len & 1);
+    if (coff_symtab.len > 0) layout += ar_header_len + coff_symtab.len + (coff_symtab.len & 1);
     if (names_table.items.len > 0) layout += ar_header_len + names_table.items.len + (names_table.items.len & 1);
     const new_offsets = try arena.alloc(usize, members.items.len);
     for (members.items, new_offsets) |m, *off| {
@@ -310,6 +321,17 @@ fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]u8 {
             const old = std.mem.readInt(u32, slot, .big);
             const index = std.mem.indexOfScalar(usize, offsets.items, old) orelse return error.BadSymbolTable;
             std.mem.writeInt(u32, slot, @intCast(new_offsets[index]), .big);
+        }
+        try writeArMember(arena, &out, "/", table);
+    }
+    if (coff_symtab.len > 0) {
+        // Little-endian member count and member offsets, then the symbol indices into them.
+        var table = try arena.dupe(u8, coff_symtab);
+        const member_count = std.mem.readInt(u32, table[0..4], .little);
+        for (0..member_count) |i| {
+            const slot = table[4 + i * 4 ..][0..4];
+            const index = std.mem.indexOfScalar(usize, offsets.items, std.mem.readInt(u32, slot, .little)) orelse return error.BadSymbolTable;
+            std.mem.writeInt(u32, slot, @intCast(new_offsets[index]), .little);
         }
         try writeArMember(arena, &out, "/", table);
     }

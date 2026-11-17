@@ -12,7 +12,9 @@ pub const meta: Meta = .{
     .ffmpeg_probes = &.{ "libmfx", "struct_mfxConfigInterface", "MFX_CODEC_VP9" },
     .ffmpeg_defines = &.{"MFX_DEPRECATED_OFF"},
     .ffmpeg_include_subdirs = &.{"vpl"},
-    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+    .system_libs = .{ .linux = &.{ "pthread", "dl" }, .windows = &.{ "ole32", "gdi32", "uuid", "advapi32" } },
+    // The dispatcher only knows Linux and Windows runtimes, as upstream.
+    .supports = Meta.support.linuxOrWindows,
 };
 
 /// Fallback location of the runtime for the legacy loader; the oneVPL search also tries the

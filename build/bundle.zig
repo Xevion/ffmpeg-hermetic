@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const Ctx = @import("Ctx.zig");
 const Meta = @import("Meta.zig");
 const ff = @import("ffmpeg.zig");
+const config = @import("ffmpeg/config.zig");
 
 const Compile = std.Build.Step.Compile;
 
@@ -19,6 +20,8 @@ const Spec = struct {
     bundle_rev: u32,
     target: []const u8,
     glibc_floor: []const u8,
+    /// Last part of the bundle's name, after the variant.
+    suffix: []const u8,
     zig: []const u8,
     link: []const Link,
     sources: []const SourceEntry,
@@ -38,10 +41,7 @@ const Node = struct {
 pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
-    if (t.os.tag != .linux or !t.abi.isGnu()) {
-        std.debug.panic("bundles are only defined for linux-gnu targets so far, not {s}-{s}", .{ @tagName(t.os.tag), @tagName(t.abi) });
-    }
-    const glibc = t.os.versionRange().gnuLibCVersion().?;
+    const platform = Platform.of(b, t);
     const bundle_rev = b.option(u32, "bundle-rev", "Revision number in the bundle's name (default: 0)") orelse 0;
     const zstd = b.lazyDependency("zstd", .{}) orelse return;
 
@@ -75,8 +75,9 @@ pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
         .variant = if (c.gpl) "gpl" else "lgpl",
         .ffmpeg_version = ff.meta.version,
         .bundle_rev = bundle_rev,
-        .target = b.fmt("{s}-unknown-linux-gnu", .{@tagName(t.cpu.arch)}),
-        .glibc_floor = if (glibc.patch == 0) b.fmt("{d}.{d}", .{ glibc.major, glibc.minor }) else b.fmt("{d}.{d}.{d}", .{ glibc.major, glibc.minor, glibc.patch }),
+        .target = platform.triple,
+        .glibc_floor = platform.glibc_floor,
+        .suffix = platform.suffix,
         .zig = builtin.zig_version_string,
         .link = link.items,
         .sources = sourceList(b, sources.items),
@@ -100,7 +101,7 @@ pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     const out = run.addOutputDirectoryArg("bundle");
     for (archives.items) |artifact| {
         run.addArg("--lib");
-        run.addArtifactArg(artifact);
+        run.addPrefixedArtifactArg(b.fmt("{s}=", .{platform.archiveFile(b, artifact.name)}), artifact);
     }
     for (ffmpeg) |artifact| {
         run.addArg("--include");
@@ -131,12 +132,57 @@ pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     const run_check = b.addRunArtifact(check);
     run_check.addDirectoryArg(out);
     _ = run_check.addOutputDirectoryArg("check");
-    run_check.addArgs(&.{ b.graph.zig_exe, b.fmt("{s}-linux-gnu.{s}", .{ @tagName(t.cpu.arch), spec.glibc_floor }) });
+    run_check.addArgs(&.{ b.graph.zig_exe, platform.zig_target });
     run_check.addFileArg(b.path("build/bundle_check.c"));
     const host = b.graph.host.result;
-    run_check.addArg(if (host.cpu.arch == t.cpu.arch and host.os.tag == .linux) "run" else "link");
+    run_check.addArg(if (host.cpu.arch == t.cpu.arch and host.os.tag == .linux and t.os.tag == .linux) "run" else "link");
+    run_check.addArg(if (t.abi == .msvc) "msvc" else "gnu");
+    if (c.libc_file) |file| run_check.addFileArg(file);
     b.step("bundle-check", "Link and run a C program against the bundle, in exactly MANIFEST.json's order").dependOn(&run_check.step);
 }
+
+/// How a bundle for the target is named and linked.
+const Platform = struct {
+    /// The Rust target triple a consumer builds for.
+    triple: []const u8,
+    /// The glibc version the archives need, `none` off Linux.
+    glibc_floor: []const u8,
+    suffix: []const u8,
+    /// The `-target` bundle-check links with.
+    zig_target: []const u8,
+    msvc: bool,
+
+    fn of(b: *std.Build, t: std.Target) Platform {
+        const arch = @tagName(t.cpu.arch);
+        switch (t.os.tag) {
+            .linux => {
+                if (!t.abi.isGnu()) std.debug.panic("bundles are defined for linux-gnu, not linux-{t}", .{t.abi});
+                const glibc = t.os.versionRange().gnuLibCVersion().?;
+                const floor = if (glibc.patch == 0) b.fmt("{d}.{d}", .{ glibc.major, glibc.minor }) else b.fmt("{d}.{d}.{d}", .{ glibc.major, glibc.minor, glibc.patch });
+                return .{ .triple = b.fmt("{s}-unknown-linux-gnu", .{arch}), .glibc_floor = floor, .suffix = b.fmt("glibc{s}", .{floor}), .zig_target = b.fmt("{s}-linux-gnu.{s}", .{ arch, floor }), .msvc = false };
+            },
+            .windows => {
+                const abi: []const u8 = switch (t.abi) {
+                    .gnu => "gnu",
+                    .msvc => "msvc",
+                    else => std.debug.panic("bundles are defined for windows-gnu and windows-msvc, not windows-{t}", .{t.abi}),
+                };
+                const triple = b.fmt("{s}-pc-windows-{s}", .{ arch, abi });
+                return .{ .triple = triple, .glibc_floor = "none", .suffix = triple, .zig_target = b.fmt("{s}-windows-{s}", .{ arch, abi }), .msvc = t.abi == .msvc };
+            },
+            .macos => {
+                const triple = b.fmt("{s}-apple-darwin", .{arch});
+                return .{ .triple = triple, .glibc_floor = "none", .suffix = triple, .zig_target = b.fmt("{s}-macos", .{arch}), .msvc = false };
+            },
+            else => std.debug.panic("bundles are not defined for {t}", .{t.os.tag}),
+        }
+    }
+
+    /// The archive's file name in the bundle's `lib/`, as the target's linker looks it up.
+    fn archiveFile(p: Platform, b: *std.Build, name: []const u8) []const u8 {
+        return if (p.msvc) b.fmt("{s}.lib", .{name}) else b.fmt("lib{s}.a", .{name});
+    }
+};
 
 fn bundledArchives(lib: Meta.Built) usize {
     var n: usize = 0;
@@ -231,8 +277,7 @@ fn linkOrder(b: *std.Build, built: []const Meta.Built) []const Node {
 /// FFmpeg's own system libraries, then the ones the bundled packages ask for, once each.
 fn systemLibs(c: Ctx, built: []const Meta.Built) []const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    const ffmpeg_base = [_][]const u8{ "pthread", "m", "dl" };
-    out.appendSlice(c.b.allocator, &ffmpeg_base) catch @panic("OOM");
+    out.appendSlice(c.b.allocator, config.systemLinkLibraries(c.target.result)) catch @panic("OOM");
     for (built) |lib| {
         if (bundledArchives(lib) == 0) continue;
         for (lib.meta.system_libs.forTarget(c)) |name| {
@@ -304,6 +349,8 @@ const cxx_files = [_][]const u8{
     "src/mutex_destructor.cpp",              "src/shared_mutex.cpp",                  "src/thread.cpp",
 };
 
+const cxx_win32_files = [_][]const u8{ "src/support/win32/locale_win32.cpp", "src/support/win32/support.cpp", "src/support/win32/thread_win32.cpp" };
+
 /// libc++ and libc++abi compiled from the sources and with the flags zig itself uses when a
 /// program links `-lc++`, so objects built against zig's libc++ headers resolve against them.
 fn cxxRuntime(c: Ctx) [2]*Compile {
@@ -331,7 +378,6 @@ fn cxxRuntime(c: Ctx) [2]*Compile {
         "-D_LIBCPP_HAS_UNICODE",
         "-D_LIBCPP_HAS_WIDE_CHARACTERS",
         "-D_LIBCPP_HAS_NO_STD_MODULES",
-        "-D_LIBCPP_HAS_TIME_ZONE_DATABASE",
         "-D_LIBCPP_PSTL_BACKEND_SERIAL",
         "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE",
         "-D_LIBCPP_ASSERTION_SEMANTIC_DEFAULT=_LIBCPP_ASSERTION_SEMANTIC_IGNORE",
@@ -343,10 +389,11 @@ fn cxxRuntime(c: Ctx) [2]*Compile {
         "-nostdinc++",
         "-std=c++23",
     }) catch @panic("OOM");
-    const glibc = t.os.versionRange().gnuLibCVersion().?;
-    if (glibc.order(.{ .major = 2, .minor = 16, .patch = 0 }) == .lt) {
+    if (t.os.tag == .linux) common.append(b.allocator, "-D_LIBCPP_HAS_TIME_ZONE_DATABASE") catch @panic("OOM");
+    const glibc: ?std.SemanticVersion = if (t.isGnuLibC()) t.os.versionRange().gnuLibCVersion().? else null;
+    if (glibc) |v| if (v.order(.{ .major = 2, .minor = 16, .patch = 0 }) == .lt) {
         common.append(b.allocator, "-D_LIBCPP_HAS_LIBRARY_ALIGNED_ALLOCATION=0") catch @panic("OOM");
-    }
+    };
 
     var cxx_flags: std.ArrayList([]const u8) = .empty;
     cxx_flags.appendSlice(b.allocator, common.items) catch @panic("OOM");
@@ -355,7 +402,7 @@ fn cxxRuntime(c: Ctx) [2]*Compile {
     var abi_flags: std.ArrayList([]const u8) = .empty;
     abi_flags.appendSlice(b.allocator, common.items) catch @panic("OOM");
     abi_flags.appendSlice(b.allocator, &.{ "-D_LIBCXXABI_BUILDING_LIBRARY", "-fstrict-aliasing" }) catch @panic("OOM");
-    if (glibc.order(.{ .major = 2, .minor = 18, .patch = 0 }) != .lt) {
+    if (t.abi.isGnu() and (glibc == null or glibc.?.order(.{ .major = 2, .minor = 18, .patch = 0 }) != .lt)) {
         abi_flags.append(b.allocator, "-DHAVE___CXA_THREAD_ATEXIT_IMPL") catch @panic("OOM");
     }
 
@@ -365,8 +412,9 @@ fn cxxRuntime(c: Ctx) [2]*Compile {
     cxx_mod.addIncludePath(cxx_dir.path(b, "src"));
     cxx_mod.addIncludePath(cxx_dir.path(b, "libc"));
     cxx_mod.addCSourceFiles(.{ .root = cxx_dir, .files = &cxx_files, .flags = cxx_flags.items, .language = .cpp });
+    if (t.os.tag == .windows) cxx_mod.addCSourceFiles(.{ .root = cxx_dir, .files = &cxx_win32_files, .flags = cxx_flags.items, .language = .cpp });
 
-    const abi_mod = runtimeModule(c, small, .async);
+    const abi_mod = runtimeModule(c, small, if (t.cpu.arch == .x86 and t.os.tag == .windows) .none else .async);
     abi_mod.addIncludePath(abi_dir.path(b, "include"));
     abi_mod.addIncludePath(cxx_dir.path(b, "include"));
     abi_mod.addIncludePath(cxx_dir.path(b, "src"));

@@ -11,7 +11,9 @@ pub const meta: Meta = .{
     .licenses = &.{"LICENSE"},
     .needs = &.{"opencl_headers"},
     .ffmpeg = &.{"opencl"},
-    .system_libs = .{ .linux = &.{ "pthread", "dl" } },
+    .system_libs = .{ .linux = &.{ "pthread", "dl" }, .windows = &.{ "cfgmgr32", "ole32", "advapi32" } },
+    // macOS has no ICDs to load; its OpenCL is Apple's framework, which FFmpeg includes as <OpenCL/cl.h>.
+    .supports = Meta.support.linuxOrWindows,
 };
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
