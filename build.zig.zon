@@ -52,8 +52,8 @@
             .lazy = true,
         },
         .libva = .{
-            .url = "https://github.com/intel/libva/archive/refs/tags/2.23.0.tar.gz",
-            .hash = "N-V-__8AABsPGACUCgL5cyAAo9A3672rLAK30nLr06oOXm1Q",
+            .url = "https://github.com/intel/libva/archive/refs/tags/2.24.1.tar.gz",
+            .hash = "N-V-__8AAMo4GADIXvJ0jQmOFAAy29xEdjN-hGP5Rx8uq_-o",
         },
         .libaom = .{
             .url = "git+https://aomedia.googlesource.com/aom?ref=v3.15.3#b141d9c45db236335351c8a4b2a14b3ade27c937",

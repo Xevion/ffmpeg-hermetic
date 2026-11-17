@@ -6,7 +6,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "libva",
-    .version = "2.23.0",
+    .version = "2.24.1",
     .licenses = &.{"COPYING"},
     .needs = &.{"libdrm"},
     .ffmpeg = &.{"vaapi"},
@@ -29,6 +29,9 @@ pub const meta: Meta = .{
     .system_libs = .{ .linux = &.{ "pthread", "dl" } },
 };
 
+/// The VA-API version libva's meson.build declares; its micro is not the package's patch number.
+const va_api = [3]u32{ 1, 24, 0 };
+
 /// Compiled in because a static libva has no loader path to find drivers from.
 const driver_dirs = "/usr/lib/x86_64-linux-gnu/dri:/usr/lib64/dri:/usr/lib/dri:/usr/local/lib/dri";
 
@@ -36,17 +39,15 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.upstream("libva");
     const drm = c.dep("libdrm").include;
-    // libva 2.x.y implements VA-API 1.x.y.
-    const ver = Meta.versionParts(meta.version);
 
     const version = b.addConfigHeader(.{
         .style = .{ .meson = src.path("va/va_version.h.in") },
         .include_path = "va/va_version.h",
     }, .{
-        .VA_API_MAJOR_VERSION = ver[0] - 1,
-        .VA_API_MINOR_VERSION = ver[1],
-        .VA_API_MICRO_VERSION = ver[2],
-        .VA_API_VERSION = b.fmt("{d}.{d}.{d}", .{ ver[0] - 1, ver[1], ver[2] }),
+        .VA_API_MAJOR_VERSION = va_api[0],
+        .VA_API_MINOR_VERSION = va_api[1],
+        .VA_API_MICRO_VERSION = va_api[2],
+        .VA_API_VERSION = b.fmt("{d}.{d}.{d}", .{ va_api[0], va_api[1], va_api[2] }),
     });
 
     const mod = c.module(.{});
