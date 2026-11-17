@@ -31,8 +31,8 @@
             .hash = "N-V-__8AAEtYegGVP8gLL8F_b5_8upw0x45Q6TdpJMiVICMt",
         },
         .zlib = .{
-            .url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.xz",
-            .hash = "N-V-__8AAJ2cNgAgfBtAw33Bxfu1IWISDeKKSr3DAqoAysIJ",
+            .url = "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.xz",
+            .hash = "N-V-__8AAH8jNwDPTrkJ1_Rx__jQMDeVEmuPIIHps-wt3xza",
         },
         .libdrm = .{
             .url = "https://dri.freedesktop.org/libdrm/libdrm-2.4.133.tar.xz",

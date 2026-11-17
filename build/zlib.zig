@@ -5,7 +5,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "zlib",
-    .version = "1.3.2",
+    .version = "1.4",
     .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"zlib"},
     .ffmpeg_probes = &.{"zlib_gzip"},
