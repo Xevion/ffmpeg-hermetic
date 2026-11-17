@@ -9,8 +9,6 @@ const config = @import("ffmpeg/config.zig");
 
 const Compile = std.Build.Step.Compile;
 
-const ffmpeg_sources = Meta.sources(ff.meta);
-
 const Link = struct { name: []const u8, kind: []const u8 };
 const SourceEntry = struct { name: []const u8, version: []const u8, sha256: []const u8, url: []const u8 };
 
@@ -38,7 +36,7 @@ const Node = struct {
 /// Adds the `bundle` and `bundle-check` steps. `built` is every library that was built, in
 /// registry order, and `ffmpeg` the FFmpeg libraries whose installed headers become the bundle's
 /// include directory.
-pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
+pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     const platform = Platform.of(b, t);
@@ -65,7 +63,7 @@ pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
     for (systemLibs(c, built)) |name| link.append(b.allocator, .{ .name = name, .kind = "dylib" }) catch @panic("OOM");
 
     var sources: std.ArrayList(Meta.Source) = .empty;
-    sources.appendSlice(b.allocator, ffmpeg_sources) catch @panic("OOM");
+    sources.appendSlice(b.allocator, ff.sources(version)) catch @panic("OOM");
     for (built) |lib| {
         if (bundledArchives(lib) == 0 and lib.output.archives.len > 0) continue;
         sources.appendSlice(b.allocator, lib.sources) catch @panic("OOM");
@@ -73,7 +71,7 @@ pub fn add(c: Ctx, built: []const Meta.Built, ffmpeg: []const *Compile) void {
 
     const spec: Spec = .{
         .variant = if (c.gpl) "gpl" else "lgpl",
-        .ffmpeg_version = ff.meta.version,
+        .ffmpeg_version = version.data().version,
         .bundle_rev = bundle_rev,
         .target = platform.triple,
         .glibc_floor = platform.glibc_floor,

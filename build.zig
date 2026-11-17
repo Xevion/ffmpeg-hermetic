@@ -158,6 +158,7 @@ pub fn build(b: *std.Build) void {
     const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else b.option(bool, "ffmpeg", "Build FFmpeg on top of the libraries (default: true)") orelse true;
 
     const version3 = b.option(bool, "version3", "Use FFmpeg's (L)GPL version 3 licensing, which admits OpenSSL 3 in GPL builds") orelse false;
+    const ffmpeg_version = b.option(ffmpeg.Version, "ffmpeg-version", "FFmpeg release to build (default: 8.1)") orelse .@"8.1";
     const programs = b.option(bool, "programs", "Also build the ffmpeg and ffprobe programs (needs the ffmpeg graph)") orelse false;
     var sel: Selection = .{ .wanted = undefined, .only = only, .version3 = version3 };
     for (&libraries, &sel.wanted) |*lib, *wanted| {
@@ -184,8 +185,8 @@ pub fn build(b: *std.Build) void {
         for (&libraries) |*lib| {
             if (lib.meta.ffmpeg_probes.len > 0) probes.append(b.allocator, .{ .names = lib.meta.ffmpeg_probes, .found = c.built.contains(lib.meta.name) }) catch @panic("OOM");
         }
-        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs });
+        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs, .version = ffmpeg_version });
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
-        bundle.add(c, deps.items, ffmpeg_libs);
+        if (ffmpeg_libs.len > 0) bundle.add(c, ffmpeg_version, deps.items, ffmpeg_libs);
     }
 }

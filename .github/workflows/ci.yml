@@ -6,13 +6,14 @@ on:
 
 jobs:
   build:
-    name: build (${{ matrix.target }}, ${{ matrix.variant }})
+    name: build (${{ matrix.target }}, ${{ matrix.variant }}${{ matrix.version && format(', {0}', matrix.version) || '' }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - { os: ubuntu-24.04, target: x86_64-linux-gnu.2.17, oracle: x86_64-linux, variant: lgpl, fate: true }
           - { os: ubuntu-24.04, target: x86_64-linux-gnu.2.17, oracle: x86_64-linux, variant: gpl, fate: true }
+          - { os: ubuntu-24.04, target: x86_64-linux-gnu.2.17, oracle: x86_64-linux, variant: lgpl, version: "9.0" }
           - { os: ubuntu-24.04-arm, target: aarch64-linux-gnu.2.17, oracle: aarch64-linux, variant: lgpl }
           - { os: ubuntu-24.04-arm, target: aarch64-linux-gnu.2.17, oracle: aarch64-linux, variant: gpl }
           - { os: ubuntu-24.04, target: x86_64-windows-gnu, oracle: x86_64-windows-gnu, variant: lgpl }
@@ -32,6 +33,7 @@ jobs:
       ARGS: >-
         -Dtarget=${{ matrix.target }} --release=fast -Donly=ffmpeg
         ${{ matrix.variant == 'gpl' && '-Dgpl' || '' }}
+        ${{ matrix.version && format('-Dffmpeg-version={0}', matrix.version) || '' }}
         ${{ matrix.fate && '-Dprograms=true' || '' }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -44,12 +46,12 @@ jobs:
           zig build "${args[@]}" --prefix out install bundle bundle-check
       - name: Oracle
         run: |
-          dir=gen/ffmpeg/${{ matrix.oracle }}-${{ matrix.variant }}/oracle
+          dir=gen/ffmpeg/${{ matrix.version || '8.1' }}/${{ matrix.oracle }}-${{ matrix.variant }}/oracle
           [ -d "$dir" ] || { echo "no oracle for this target"; exit 0; }
           $(command -v python3 || command -v python) tools/check_config.py out/share/ffmpeg-zig/config "$dir"
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: bundle-${{ matrix.target }}-${{ matrix.variant }}
+          name: bundle-${{ matrix.target }}-${{ matrix.variant }}${{ matrix.version && format('-{0}', matrix.version) || '' }}
           path: out/bundle/*.tar.zst*
       - name: FATE samples
         if: matrix.fate
@@ -66,7 +68,7 @@ jobs:
         run: |
           sudo apt-get install -y nasm libxml2-utils
           rsync -rltLW --delete rsync://fate-suite.ffmpeg.org/fate-suite/ fate-suite/
-          hash=$(sed -n '/^        \.ffmpeg = \.{/,/}/s/.*\.hash = "\(.*\)".*/\1/p' build.zig.zon)
+          hash=$(sed -n '/^        \.ffmpeg_8_1 = \.{/,/}/s/.*\.hash = "\(.*\)".*/\1/p' build.zig.zon)
           XFAIL=tools/fate_xfail.txt JOBS=4 tools/fate.sh out "zig-pkg/$hash" fate-suite
 
   # Targets FFmpeg does not build for yet: only the libraries.

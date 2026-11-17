@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates gen/ffmpeg/configure.zig from FFmpeg's configure script and Makefiles.
+"""Generates gen/ffmpeg/<major.minor>/configure.zig from FFmpeg's configure script and Makefiles.
 
 usage: ffmpeg_gen.py <ffmpeg-src> <out.zig>
 
@@ -82,6 +82,9 @@ def configure_state(src):
 def configure_data(src):
     v = configure_state(src)
     lists = {name: v[name].split() for name in LISTS}
+    # libavcodec's *_tablegen host programs only matter when tables are compiled in.
+    if v.get("hardcoded_tables", "") not in ("", "no"):
+        fail("hardcoded_tables is not off, so libavcodec's table generators would be needed")
     start = set()
     for name in ("CONFIG_LIST", "CONFIG_EXTRA", "HAVE_LIST", "ALL_COMPONENTS", "ARCH_LIST"):
         start.update(lists[name])
@@ -129,6 +132,26 @@ def configure_data(src):
     return lists, decls, defaults, files
 
 
+PREPROCESS_RECIPE = "$(HOSTCC) $(HOSTCC_E) $(CPPFLAGS) $<"
+HOSTGEN_RECIPE = ["$(M)$< {flag} > $@.tmp", "$(CP) $@.tmp $@", "$(RM) $@.tmp"]
+
+
+def recipe(path, rule):
+    """The tab-indented recipe lines of the rule whose first line starts with `rule`."""
+    out, state = [], "outside"
+    for line in open(path).read().split("\n"):
+        if state == "outside":
+            if line.startswith(rule):
+                state = "header" if line.endswith("\\") else "body"
+        elif state == "header":
+            state = "header" if line.endswith("\\") else "body"
+        elif line.startswith("\t"):
+            out.append(line.strip())
+        else:
+            break
+    return out
+
+
 class Makefile:
     """The subset of make FFmpeg's library Makefiles use, evaluated symbolically."""
 
@@ -141,6 +164,9 @@ class Makefile:
         self.aux = {}
         self.templates = []
         self.includes = []
+        self.preprocessed = []
+        self.host_progs = []
+        self.hostgen = []
 
     @staticmethod
     def name(key):
@@ -206,12 +232,34 @@ class Makefile:
                 keys = re.findall(r"\$\(((?:CONFIG|HAVE|ARCH)_\w+)\)", m.group(2))
                 self.templates.append((m.group(1), keys, m.group(3).split(), list(stack)))
                 continue
+            m = re.match(r"^\$\(SUBDIR\)(\S+\.gen\.asm):\s*\$\(SRC_PATH\)/(\S+\.asm\.h)(\s.*)?$", line)
+            if m:
+                if recipe(path, "$(SUBDIR)" + m.group(1) + ":") != [PREPROCESS_RECIPE]:
+                    fail(f"{path}: unhandled recipe for {m.group(1)}")
+                self.preprocessed.append((f"{self.lib}/{m.group(1)}", m.group(2), scope))
+                continue
+            m = re.match(r"^\$\(SUBDIR\)(\S+\.gen\.(?:S|c)):\s*\$\(SUBDIR\)(\S+)\$\(HOSTEXESUF\)$", line)
+            if m:
+                target, prog = m.groups()
+                lines = recipe(path, "$(SUBDIR)" + target + ":")
+                flag = re.match(r"^\$\(M\)\$< (-\w+) > \$@\.tmp$", lines[0]) if lines else None
+                if not flag or lines != [r.format(flag=flag.group(1)) for r in HOSTGEN_RECIPE]:
+                    fail(f"{path}: unhandled recipe for {target}: {lines!r}")
+                self.hostgen.append((f"{self.lib}/{target}", f"{self.lib}/{prog}", flag.group(1)))
+                continue
             m = self.VAR.match(line)
             if not m:
                 if ":" in line.split("=", 1)[0]:
+                    if ".gen." in line.split(":", 1)[0]:
+                        fail(f"{path}: unhandled rule for a generated file: {line!r}")
                     continue
                 fail(f"{path}: unhandled line {line!r}")
             var, key, op, value = m.groups()
+            if var == "HOSTPROGS":
+                if op != "=" or key or stack:
+                    fail(f"{path}: conditional HOSTPROGS {line!r}")
+                self.host_progs += [f"{self.lib}/{w}" for w in value.split()]
+                continue
             kept = var in self.gates or var in ("STLIBOBJS", "SHLIBOBJS", "HEADERS", "BUILT_HEADERS")
             if not kept and not var.endswith("-OBJS"):
                 continue
@@ -265,8 +313,11 @@ class Makefile:
         fail(f"{path}: unknown variable $({ref})")
 
 
-def source_for(src, lib, obj):
+def source_for(src, lib, obj, hostgen):
     stem = os.path.join(lib, obj[: -len(".o")])
+    for ext in (".S", ".c"):
+        if stem.endswith(".gen") and stem + ext in hostgen:
+            return stem + ext, "hostgen"
     if obj.endswith(".ptx.o"):
         return stem[: -len(".ptx")] + ".cu", "cuda"
     for ext, kind in ((".c", "c"), (".cpp", "cpp"), (".m", "objc"), (".S", "gas"), (".asm", "nasm"), (".rc", "rc")):
@@ -301,13 +352,21 @@ def makefile_data(src):
             for obj, cond, scope in mk.expand(entries):
                 if not obj.endswith(".o"):
                     fail(f"{lib}: {var} lists {obj!r}")
-                path, kind = source_for(src, lib, obj)
+                path, kind = source_for(src, lib, obj, {g[0] for g in mk.hostgen})
                 incs = sorted({inc for prefix, inc in mk.includes if path.startswith(prefix)})
                 when = ([gate] if gate else []) + cond
                 objects.append((path, kind, scope, tuple(when), tuple(incs)))
         headers = [h for h, _, _ in mk.expand(mk.vars.get("HEADERS", []))]
         built = [h for h, _, _ in mk.expand(mk.vars.get("BUILT_HEADERS", []))]
-        libs.append((lib[3:], sorted(set(objects), key=lambda o: (o[0], o[2], o[3])), headers, built))
+        progs = {}
+        for target, prog, flag in sorted(set(mk.hostgen)):
+            if prog not in mk.host_progs:
+                fail(f"{lib}: {target} runs {prog}, which HOSTPROGS does not list")
+            progs.setdefault(prog, []).append((flag, target))
+        for prog in progs:
+            if not os.path.isfile(os.path.join(src, prog + ".c")):
+                fail(f"{lib}: no source for host program {prog}")
+        libs.append((lib[3:], sorted(set(objects), key=lambda o: (o[0], o[2], o[3])), headers, built, sorted(set(mk.preprocessed)), sorted(progs.items())))
     return libs
 
 
@@ -410,53 +469,62 @@ def zlist(items):
 def write(out, lists, decls, defaults, files, libs, programs, version):
     w = []
     w.append("//! Generated by tools/ffmpeg_gen.py from FFmpeg's configure and Makefiles. Do not edit.\n")
-    w.append('const T = @import("../../build/ffmpeg/resolve.zig");\n')
-    w.append(f"pub const version = {zstr(version)};\n")
-    w.append("/// configure's lists, in configure's order.")
-    w.append("pub const lists = struct {")
+    w.append('const T = @import("../../../build/ffmpeg/resolve.zig");\n')
+    w.append("pub const data: T.Data = .{")
+    w.append(f"    .version = {zstr(version)},")
+    w.append("    // configure's lists, in configure's order.")
+    w.append("    .lists = .{")
     for name in LISTS:
-        w.append(f"    pub const {name.lower()}: []const []const u8 = &.{{")
+        w.append(f"        .{name.lower()} = &.{{")
         for item in lists[name]:
-            w.append(f"        {zstr(item)},")
-        w.append("    };")
-    w.append("};\n")
-    w.append("/// Every `<name>_deps`-style declaration reachable from check_deps' roots.")
-    w.append("pub const decls = [_]T.Decl{")
+            w.append(f"            {zstr(item)},")
+        w.append("        },")
+    w.append("    },")
+    w.append("    // Every `<name>_deps`-style declaration reachable from check_deps' roots.")
+    w.append("    .decls = &.{")
     for name in sorted(decls):
         d = decls[name]
         fields = [f".name = {zstr(name)}"] + [f".{ZIG_FIELD.get(k, k)} = {zlist(d[k])}" for k in DEP_KINDS if k in d]
-        w.append("    .{ " + ", ".join(fields) + " },")
-    w.append("};\n")
-    w.append("/// State after option parsing with the base options and no external libraries, before probes.")
-    w.append("pub const defaults = [_]T.Default{")
+        w.append("        .{ " + ", ".join(fields) + " },")
+    w.append("    },")
+    w.append("    // State after option parsing with the base options and no external libraries, before probes.")
+    w.append("    .defaults = &.{")
     for name, val in defaults.items():
-        w.append(f"    .{{ {zstr(name)}, .{val} }},")
-    w.append("};\n")
-    w.append("/// print_enabled_components outputs: each entry is a component and the symbol it prints.")
-    w.append("pub const component_files = [_]T.ComponentFile{")
+        w.append(f"        .{{ {zstr(name)}, .{val} }},")
+    w.append("    },")
+    w.append("    // print_enabled_components outputs: each entry is a component and the symbol it prints.")
+    w.append("    .component_files = &.{")
     for path, struct, array, entries in files:
-        w.append(f"    .{{ .path = {zstr(path)}, .struct_name = {zstr(struct)}, .array = {zstr(array)}, .entries = &.{{")
+        w.append(f"        .{{ .path = {zstr(path)}, .struct_name = {zstr(struct)}, .array = {zstr(array)}, .entries = &.{{")
         for c, sym in entries:
-            w.append(f"        .{{ {zstr(c)}, {zstr(sym)} }},")
+            w.append(f"            .{{ {zstr(c)}, {zstr(sym)} }},")
         tail = zlist(FILTER_TAIL) if array == "filter_list" else "&.{}"
-        w.append(f"    }}, .tail = {tail} }},")
-    w.append("};\n")
-    w.append("/// Objects each library's Makefiles can build, with the names that must all be enabled.")
-    w.append("pub const libraries = [_]T.Library{")
-    for name, objects, headers, built in libs:
-        w.append(f"    .{{ .name = {zstr(name)}, .headers = {zlist(headers)}, .built_headers = {zlist(built)}, .objects = &.{{")
+        w.append(f"        }}, .tail = {tail} }},")
+    w.append("    },")
+    w.append("    // Objects each library's Makefiles can build, with the names that must all be enabled.")
+    w.append("    .libraries = &.{")
+    for name, objects, headers, built, preprocessed, host_programs in libs:
+        w.append(f"        .{{ .name = {zstr(name)}, .headers = {zlist(headers)}, .built_headers = {zlist(built)}, .objects = &.{{")
         for path, kind, scope, when, incs in objects:
             fields = [zstr(path), f".{kind}"]
             fields.append(zstr(scope))
             fields.append(zlist(when))
             fields.append(zlist(incs))
-            w.append("        .{ " + ", ".join(fields) + " },")
-        w.append("    } },")
-    w.append("};\n")
-    w.append("/// fftools' programs: C sources and the resources (.html, .css) embedded as C arrays.")
-    w.append("pub const programs = [_]struct { name: []const u8, sources: []const []const u8, resources: []const []const u8 }{")
+            w.append("            .{ " + ", ".join(fields) + " },")
+        w.append("        }, .preprocessed = &.{")
+        for target, source, scope in preprocessed:
+            w.append(f"            .{{ {zstr(target)}, {zstr(source)}, {zstr(scope)} }},")
+        w.append("        }, .host_programs = &.{")
+        for prog, outputs in host_programs:
+            outs = ", ".join(f".{{ {zstr(flag)}, {zstr(target)} }}" for flag, target in outputs)
+            w.append(f"            .{{ .path = {zstr(prog)}, .outputs = &.{{ {outs} }} }},")
+        w.append("        } },")
+    w.append("    },")
+    w.append("    // fftools' programs: C sources and the resources (.html, .css) embedded as C arrays.")
+    w.append("    .programs = &.{")
     for name, sources, resources in programs:
-        w.append(f"    .{{ .name = {zstr(name)}, .sources = {zlist(sources)}, .resources = {zlist(resources)} }},")
+        w.append(f"        .{{ .name = {zstr(name)}, .sources = {zlist(sources)}, .resources = {zlist(resources)} }},")
+    w.append("    },")
     w.append("};")
     with open(out, "w") as f:
         f.write("\n".join(w) + "\n")

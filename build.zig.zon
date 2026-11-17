@@ -2,7 +2,7 @@
     .name = .ffmpeg_zig,
     .version = "0.0.1",
     .dependencies = .{
-        .ffmpeg = .{
+        .ffmpeg_8_1 = .{
             .url = "https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz",
             .hash = "N-V-__8AANsuQwXWYis70NnnNNHKnLmocc7rVl_AmZuFsBq-",
         },
@@ -210,6 +210,11 @@
         .xvidcore = .{
             .url = "git+https://salsa.debian.org/multimedia-team/xvidcore.git#013c664be6dedfadcdbf82c1151f6bd9d173970b",
             .hash = "N-V-__8AAIeOOADEJPs01Z2d8S5iHeCz8R-Zq3huW8jUn9Gb",
+            .lazy = true,
+        },
+        .ffmpeg_9_0 = .{
+            .url = "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+            .hash = "N-V-__8AAEfCYgUDQ6luB9hrkgnNTDdtUDuoJziZIZSfT1_m",
             .lazy = true,
         },
     },

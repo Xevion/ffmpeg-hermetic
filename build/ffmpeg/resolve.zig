@@ -1,7 +1,76 @@
 //! FFmpeg's configure dependency resolution and Makefile object selection, replayed at
-//! build-graph time over the data tools/ffmpeg_gen.py extracts into gen/ffmpeg/configure.zig.
+//! build-graph time over the data tools/ffmpeg_gen.py extracts into gen/ffmpeg/<version>/configure.zig.
 const std = @import("std");
-pub const data = @import("../../gen/ffmpeg/configure.zig");
+
+/// FFmpeg releases the build carries data for; the tag is the pin's major.minor.
+pub const Version = enum {
+    @"8.1",
+    @"9.0",
+
+    /// The extracted configure and Makefile data of this release.
+    pub fn data(v: Version) *const Data {
+        return switch (v) {
+            .@"8.1" => &@import("../../gen/ffmpeg/8.1/configure.zig").data,
+            .@"9.0" => &@import("../../gen/ffmpeg/9.0/configure.zig").data,
+        };
+    }
+
+    /// The key of the release's tarball in build.zig.zon.
+    pub fn pin(v: Version) []const u8 {
+        return switch (v) {
+            .@"8.1" => "ffmpeg_8_1",
+            .@"9.0" => "ffmpeg_9_0",
+        };
+    }
+};
+
+/// What tools/ffmpeg_gen.py extracts from one FFmpeg tree.
+pub const Data = struct {
+    /// The full release, `9.0.2`.
+    version: []const u8,
+    lists: Lists,
+    decls: []const Decl,
+    defaults: []const Default,
+    component_files: []const ComponentFile,
+    libraries: []const Library,
+    programs: []const Program,
+};
+
+/// configure's lists, in configure's order.
+pub const Lists = struct {
+    config_list: []const []const u8,
+    config_extra: []const []const u8,
+    have_list: []const []const u8,
+    arch_list: []const []const u8,
+    all_components: []const []const u8,
+    have_list_pub: []const []const u8,
+    external_library_list: []const []const u8,
+    hwaccel_library_list: []const []const u8,
+    external_autodetect_library_list: []const []const u8,
+    hwaccel_autodetect_library_list: []const []const u8,
+    intrinsics_list: []const []const u8,
+    external_library_gpl_list: []const []const u8,
+    external_library_nonfree_list: []const []const u8,
+    external_library_version3_list: []const []const u8,
+    external_library_gplv3_list: []const []const u8,
+    hwaccel_library_nonfree_list: []const []const u8,
+    filter_list: []const []const u8,
+    codec_list: []const []const u8,
+    parser_list: []const []const u8,
+    bsf_list: []const []const u8,
+    demuxer_list: []const []const u8,
+    muxer_list: []const []const u8,
+    indev_list: []const []const u8,
+    outdev_list: []const []const u8,
+    protocol_list: []const []const u8,
+};
+
+/// One program of fftools: its C sources and the resources (.html, .css) embedded as C arrays.
+pub const Program = struct {
+    name: []const u8,
+    sources: []const []const u8,
+    resources: []const []const u8,
+};
 
 /// A configure variable: `yes`, `no`, or never assigned.
 pub const Value = enum { unset, yes, no };
@@ -29,7 +98,7 @@ pub const ComponentFile = struct {
     tail: []const []const u8,
 };
 
-pub const Kind = enum { c, cpp, objc, gas, nasm, rc, cuda, opencl, generated };
+pub const Kind = enum { c, cpp, objc, gas, nasm, rc, cuda, opencl, generated, hostgen };
 
 /// Source path, kind, the arch or intrinsics directory whose Makefile lists it ("" for the
 /// library's own), names that must all be enabled (`!` negates), and extra include dirs.
@@ -40,6 +109,19 @@ pub const Library = struct {
     headers: []const []const u8,
     built_headers: []const []const u8,
     objects: []const Object,
+    preprocessed: []const Preprocessed,
+    host_programs: []const HostProgram,
+};
+
+/// An assembler include the Makefile produces by running the C preprocessor over a source:
+/// output path, source path, and the arch directory whose Makefile declares it.
+pub const Preprocessed = struct { []const u8, []const u8, []const u8 };
+
+/// A host program a Makefile builds and runs to write source files: its source without `.c`, and
+/// each generated file with the flag that makes the program print it to stdout.
+pub const HostProgram = struct {
+    path: []const u8,
+    outputs: []const struct { []const u8, []const u8 },
 };
 
 /// Names configure sets only while probing an enabled library, as the pinned versions answer.
@@ -72,6 +154,8 @@ pub const Options = struct {
 
 pub const State = struct {
     gpa: std.mem.Allocator,
+    version: Version,
+    data: *const Data,
     values: std.StringHashMapUnmanaged(Value) = .empty,
     decls: std.StringHashMapUnmanaged(*const Decl) = .empty,
     /// false while a name's dependencies are being checked, true once done.
@@ -82,9 +166,10 @@ pub const State = struct {
     given: std.StringHashMapUnmanaged(void) = .empty,
 
     /// The state after configure parses the base options, before any probe runs.
-    pub fn init(gpa: std.mem.Allocator) State {
-        var s: State = .{ .gpa = gpa };
-        for (&data.decls) |*d| s.decls.put(gpa, d.name, d) catch @panic("OOM");
+    pub fn init(gpa: std.mem.Allocator, version: Version) State {
+        const data = version.data();
+        var s: State = .{ .gpa = gpa, .version = version, .data = data };
+        for (data.decls) |*d| s.decls.put(gpa, d.name, d) catch @panic("OOM");
         for (data.defaults) |d| s.put(d[0], d[1]);
         for ([_]struct { []const u8, []const []const u8 }{
             .{ "ARCH_", data.lists.arch_list },
@@ -145,7 +230,7 @@ pub const State = struct {
             s.put("version3", .yes);
             s.put(if (o.gpl) "gplv3" else "lgplv3", .yes);
         }
-        const lists = data.lists;
+        const lists = s.data.lists;
         for (o.libraries) |lib| {
             if (!contains(&.{ lists.external_library_list, lists.hwaccel_library_list, lists.external_autodetect_library_list, lists.hwaccel_autodetect_library_list }, lib)) {
                 std.debug.panic("{s} is not an FFmpeg external or hwaccel library", .{lib});
@@ -185,10 +270,10 @@ pub const State = struct {
 
     /// configure's `check_deps $CONFIG_LIST $CONFIG_EXTRA $HAVE_LIST $ALL_COMPONENTS`.
     pub fn resolve(s: *State) void {
-        s.checkDeps(data.lists.config_list);
-        s.checkDeps(data.lists.config_extra);
-        s.checkDeps(data.lists.have_list);
-        s.checkDeps(data.lists.all_components);
+        s.checkDeps(s.data.lists.config_list);
+        s.checkDeps(s.data.lists.config_extra);
+        s.checkDeps(s.data.lists.have_list);
+        s.checkDeps(s.data.lists.all_components);
     }
 
     fn checkDeps(s: *State, names: []const []const u8) void {
@@ -249,10 +334,10 @@ pub const State = struct {
     /// Adds `PREFIX_NAME` booleans for configure's printed lists, in configure's order.
     pub fn define(s: *const State, header: *std.Build.Step.ConfigHeader) void {
         for ([_]struct { []const u8, []const []const u8 }{
-            .{ "ARCH_", data.lists.arch_list },
-            .{ "HAVE_", data.lists.have_list },
-            .{ "CONFIG_", data.lists.config_list },
-            .{ "CONFIG_", data.lists.config_extra },
+            .{ "ARCH_", s.data.lists.arch_list },
+            .{ "HAVE_", s.data.lists.have_list },
+            .{ "CONFIG_", s.data.lists.config_list },
+            .{ "CONFIG_", s.data.lists.config_extra },
         }) |l| for (l[1]) |name| header.addValue(key(s.gpa, l[0], name), bool, s.enabled(name));
     }
 
@@ -265,7 +350,7 @@ pub const State = struct {
         } else {
             w.writeAll("/* Automatically generated by configure - do not modify! */\n#ifndef FFMPEG_CONFIG_COMPONENTS_H\n#define FFMPEG_CONFIG_COMPONENTS_H\n") catch @panic("OOM");
         }
-        for (data.lists.all_components) |name| {
+        for (s.data.lists.all_components) |name| {
             w.print("{s} {s} {d}\n", .{ if (asm_style) "%define" else "#define", key(s.gpa, "CONFIG_", name), @intFromBool(s.enabled(name)) }) catch @panic("OOM");
         }
         if (!asm_style) w.writeAll("#endif /* FFMPEG_CONFIG_COMPONENTS_H */\n") catch @panic("OOM");
@@ -321,6 +406,7 @@ pub const State = struct {
                 .gas => &out.gas,
                 .cuda => &out.cuda,
                 .opencl => &out.opencl,
+                .hostgen => &out.hostgen,
                 else => &out.unsupported,
             };
             list.append(s.gpa, o[0]) catch @panic("OOM");
@@ -352,6 +438,8 @@ pub const Sources = struct {
     cuda: std.ArrayList([]const u8) = .empty,
     /// OpenCL kernels, embedded as C strings.
     opencl: std.ArrayList([]const u8) = .empty,
+    /// Sources a host program prints, by their path in the library's host program outputs.
+    hostgen: std.ArrayList([]const u8) = .empty,
     /// Objects this build cannot compile (C++, Objective-C, resources, generated shaders).
     unsupported: std.ArrayList([]const u8) = .empty,
 };

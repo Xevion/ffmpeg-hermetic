@@ -49,7 +49,23 @@ def source_of(tokens):
     for t in reversed(tokens):
         if t.startswith("src/"):
             return t[len("src/"):]
+    # Sources a host program wrote into the build tree (libswscale/aarch64/ops_neon.gen.S).
+    for t in reversed(tokens):
+        if t.endswith((".gen.S", ".gen.c")):
+            return t
     return None
+
+
+def host_objects(plan):
+    """Objects the plan links into a program instead of an archive: host programs' own."""
+    out = set()
+    for line in plan.splitlines():
+        tokens = line.split()
+        if " -o " in line and "-c" not in tokens:
+            exe = tokens[tokens.index("-o") + 1]
+            if exe + ".o" in tokens:
+                out.add(exe + ".o")
+    return out
 
 
 def source_includes(tokens, src_root):
@@ -67,6 +83,7 @@ def main():
     bld, out = os.path.realpath(sys.argv[1]), sys.argv[2]
     src_root = os.path.realpath(os.path.join(bld, "src"))
     plan = subprocess.run(["make", "-n", "V=1"], cwd=bld, capture_output=True, text=True, check=True).stdout
+    host = host_objects(plan)
     sources = {lib: {"c": {}, "nasm": set(), "gas": set(), "cuda": set(), "opencl": set(), "headers": set()} for lib in LIBS}
     for line in plan.splitlines():
         words = line.split()
@@ -80,7 +97,7 @@ def main():
         tokens = shlex.split(line)
         obj = tokens[tokens.index("-o") + 1]
         lib = obj.split("/")[0]
-        if lib not in sources:
+        if lib not in sources or obj in host:
             continue
         src = source_of(tokens)
         if src is None:

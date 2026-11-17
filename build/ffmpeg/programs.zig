@@ -1,5 +1,5 @@
 //! FFmpeg's command-line programs (ffmpeg, ffprobe), linked statically against the archives
-//! build/ffmpeg.zig produced. Sources come from fftools/Makefile through gen/ffmpeg/configure.zig;
+//! build/ffmpeg.zig produced. Sources come from fftools/Makefile through gen/ffmpeg/<version>/configure.zig;
 //! ffplay needs SDL and is not built.
 const std = @import("std");
 const Ctx = @import("../Ctx.zig");
@@ -7,6 +7,7 @@ const config = @import("config.zig");
 const resolve = @import("resolve.zig");
 
 pub const Inputs = struct {
+    data: *const resolve.Data,
     headers: config.Headers,
     /// Directory holding the generated config_components.h and libavutil/ffversion.h.
     gen: std.Build.LazyPath,
@@ -34,7 +35,7 @@ pub fn add(c: Ctx, in: Inputs) void {
     // Only the libraries define HAVE_AV_CONFIG_H; with it the installed headers drop their version.h.
     var flags: std.ArrayList([]const u8) = .empty;
     for (in.flags) |f| if (!std.mem.eql(u8, f, "-DHAVE_AV_CONFIG_H")) flags.append(b.allocator, f) catch @panic("OOM");
-    for (resolve.data.programs) |prog| {
+    for (in.data.programs) |prog| {
         if (!inList(&built, prog.name)) continue;
         const mod = c.module(.{ .cpp = true });
         mod.addConfigHeader(in.headers.config_h);

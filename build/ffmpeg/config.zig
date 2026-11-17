@@ -485,7 +485,6 @@ pub fn apply(c: Ctx, s: *resolve.State) void {
         .HAVE_STRUCT_MFXCONFIGINTERFACE = false,
         .HAVE_GZIP = true,
         .HAVE_IOCTL_POSIX = false,
-        .HAVE_MAKEINFO = false,
         .HAVE_MAKEINFO_HTML = false,
         .HAVE_OPENCL_D3D11 = false,
         .HAVE_OPENCL_DRM_ARM = false,
@@ -523,6 +522,27 @@ pub fn apply(c: Ctx, s: *resolve.State) void {
         .spirv_library = false,
     };
     s.setFacts(common);
+    switch (s.version) {
+        .@"8.1" => s.setFacts(.{ .HAVE_MAKEINFO = false }),
+        .@"9.0" => s.setFacts(.{
+            .HAVE_PMULL = a64,
+            .HAVE_PMULL_EXTERNAL = false,
+            .HAVE_PMULL_INLINE = have_aarch64_feat(t, .aes),
+            .HAVE_EOR3 = a64,
+            .HAVE_EOR3_EXTERNAL = false,
+            .HAVE_EOR3_INLINE = have_aarch64_feat(t, .sha3),
+            .HAVE_AS_ARCHEXT_AES_DIRECTIVE = a64,
+            .HAVE_AS_ARCHEXT_SHA3_DIRECTIVE = a64,
+            .HAVE_X86_SSE2AVX = x86 and std.Target.x86.featureSetHas(t.cpu.features, .avx),
+            .HAVE_INT128 = t.ptrBitWidth() == 64,
+            .HAVE_IOCTL = !windows,
+            .HAVE_PTHREAD_SETAFFINITY_NP = linux,
+            .HAVE_SIGACTION = !windows,
+            .HAVE_SIGLONGJMP = !windows,
+            .HAVE_SPIRV_HEADERS_SPIRV_H = false,
+            .HAVE_SPIRV_UNIFIED1_SPIRV_H = false,
+        }),
+    }
     s.setProbes(.{ .names = &windows_probes, .found = windows });
     // zig's MinGW libraries have no libvfw32.
     s.setProbes(.{ .names = &.{"vfw32"}, .found = msvc });
