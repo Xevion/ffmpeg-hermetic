@@ -19,7 +19,7 @@ runs:
         key: zig-pkg-${{ runner.os }}-${{ hashFiles('build.zig.zon') }}
         restore-keys: zig-pkg-${{ runner.os }}-
     # One build cache per set of options. A fetched package's repack in p/ unpacks one directory
-    # too deep, so it stays out.
+    # too deep, and the configured graph in c/ holds this run's zig path, so both stay out.
     - id: build-key
       shell: bash
       run: |
@@ -29,6 +29,7 @@ runs:
       with:
         path: |
           .zig-cache
+          !.zig-cache/c
           !.zig-cache/p
           !.zig-cache/tmp
         key: zig-build-${{ runner.os }}-${{ steps.build-key.outputs.key }}-${{ github.sha }}
@@ -44,6 +45,7 @@ runs:
     - name: Fetch
       shell: bash
       run: |
+        rm -rf .zig-cache/c
         for attempt in 1 2 3 4; do
           zig build ${{ inputs.args }} -l > /dev/null && exit 0
           echo "fetch attempt $attempt failed" >&2
