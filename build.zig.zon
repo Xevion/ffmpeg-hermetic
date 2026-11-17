@@ -27,8 +27,8 @@
             .hash = "N-V-__8AANlUJgLLYB2Y0Wj2L2_cY5AWvZBVfti-c9rMaV_t",
         },
         .libvpx = .{
-            .url = "https://github.com/webmproject/libvpx/archive/refs/tags/v1.16.0.tar.gz",
-            .hash = "N-V-__8AAAjBdwGUmciM11_IJHCfSXdKL_vngBVk5w-EvZKD",
+            .url = "https://github.com/webmproject/libvpx/archive/refs/tags/v1.17.0.tar.gz",
+            .hash = "N-V-__8AAEtYegGVP8gLL8F_b5_8upw0x45Q6TdpJMiVICMt",
         },
         .zlib = .{
             .url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.xz",

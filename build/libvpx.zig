@@ -5,7 +5,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "libvpx",
-    .version = "1.16.0",
+    .version = "1.17.0",
     .licenses = &.{ "LICENSE", "PATENTS" },
     .ffmpeg = &.{"libvpx"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
@@ -35,6 +35,8 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
 
     var flags: std.ArrayList([]const u8) = .empty;
     flags.append(b.allocator, "-DNDEBUG") catch @panic("OOM");
+    // vpx_pthread.h's Windows trylock uses EBUSY without including errno.h.
+    if (c.isWindows()) flags.appendSlice(b.allocator, &.{"--include=errno.h"}) catch @panic("OOM");
     if (linux) flags.appendSlice(b.allocator, &.{ "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0", "-D_LARGEFILE_SOURCE", "-D_FILE_OFFSET_BITS=64" }) catch @panic("OOM");
 
     const setup: Ctx.Setup = .{ .includes = &.{ generated.getDirectory(), b.path(gen_dir), src.path("") } };
@@ -118,11 +120,13 @@ fn configEntries(b: *std.Build, c: Ctx, x86_64: bool, arm64: bool) []const Entry
     add(&list, a, "HAVE_NEON_ASM", false);
     for ([_][]const u8{ "HAVE_NEON", "HAVE_NEON_DOTPROD", "HAVE_NEON_I8MM", "HAVE_SVE", "HAVE_SVE2" }) |n| add(&list, a, n, arm64);
     for ([_][]const u8{ "HAVE_MIPS32", "HAVE_DSPR2", "HAVE_MSA", "HAVE_MIPS64" }) |n| add(&list, a, n, false);
+    add(&list, a, "HAVE_X86_ASM", x86_64);
     for (simd) |n| add(&list, a, b.fmt("HAVE_{s}", .{n}), x86_64);
     for ([_][]const u8{ "HAVE_VSX", "HAVE_MMI", "HAVE_LSX", "HAVE_LASX" }) |n| add(&list, a, n, false);
     add(&list, a, "HAVE_VPX_PORTS", true);
     // configure does not probe headers for Windows toolchains, so both stay off there.
     add(&list, a, "HAVE_PTHREAD_H", !windows);
+    add(&list, a, "HAVE_PTHREAD_SETNAME_NP", !windows);
     add(&list, a, "HAVE_UNISTD_H", !windows);
     add(&list, a, "CONFIG_DEPENDENCY_TRACKING", true);
     add(&list, a, "CONFIG_EXTERNAL_BUILD", false);
@@ -450,6 +454,7 @@ const avx2_c = [_][]const u8{
     "vpx_dsp/x86/avg_intrin_avx2.c",
     "vpx_dsp/x86/avg_pred_avx2.c",
     "vpx_dsp/x86/highbd_convolve_avx2.c",
+    "vpx_dsp/x86/highbd_intrapred_intrin_avx2.c",
     "vpx_dsp/x86/highbd_quantize_intrin_avx2.c",
     "vpx_dsp/x86/highbd_sad4d_avx2.c",
     "vpx_dsp/x86/highbd_sad_avx2.c",
@@ -491,6 +496,7 @@ const ssse3_c = [_][]const u8{
 };
 
 const avx512_c = [_][]const u8{
+    "vpx_dsp/x86/highbd_intrapred_intrin_avx512.c",
     "vpx_dsp/x86/sad4d_avx512.c",
     "vpx_dsp/x86/sad_avx512.c",
 };
@@ -642,6 +648,7 @@ const aarch64_dotprod_c = [_][]const u8{
     "vpx_dsp/arm/sad4d_neon_dotprod.c",
     "vpx_dsp/arm/sad_neon_dotprod.c",
     "vpx_dsp/arm/sse_neon_dotprod.c",
+    "vpx_dsp/arm/subpel_variance_neon_dotprod.c",
     "vpx_dsp/arm/variance_neon_dotprod.c",
     "vpx_dsp/arm/vpx_convolve8_neon_dotprod.c",
 };
