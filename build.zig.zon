@@ -7,8 +7,8 @@
             .hash = "N-V-__8AANsuQwXWYis70NnnNNHKnLmocc7rVl_AmZuFsBq-",
         },
         .dav1d = .{
-            .url = "https://downloads.videolan.org/pub/videolan/dav1d/1.5.3/dav1d-1.5.3.tar.xz",
-            .hash = "N-V-__8AAGPEswDhJviIdrQMQphpqvzV4vajBe-y2sZviPZl",
+            .url = "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+            .hash = "N-V-__8AAMa2uADFWkkzECjkNT3uIozVdICt7NhKQ0IdLju9",
         },
         .opus = .{
             .url = "https://ftp.osuosl.org/pub/xiph/releases/opus/opus-1.6.1.tar.gz",

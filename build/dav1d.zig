@@ -5,7 +5,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "dav1d",
-    .version = "1.5.3",
+    .version = "1.5.4",
     .licenses = &.{"COPYING"},
     .ffmpeg = &.{"libdav1d"},
     .system_libs = .{ .linux = &.{ "pthread", "dl" } },
@@ -44,7 +44,6 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .CONFIG_16BPC = 1,
         .CONFIG_8BPC = 1,
         .CONFIG_LOG = 1,
-        .CONFIG_MACOS_KPERF = 0,
         .ENDIANNESS_BIG = b10(t.cpu.arch.endian() == .big),
         .HAVE_ALIGNED_ALLOC = b10(!windows),
         .HAVE_ASM = b10(asm_enabled),
@@ -70,6 +69,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .HAVE_PTHREAD_SETAFFINITY_NP = b10(linux),
         .HAVE_PTHREAD_SETNAME_NP = b10(linux or darwin),
         .HAVE_PTHREAD_SET_NAME_NP = 0,
+        .HAVE_SIGACTION = b10(!windows),
         .HAVE_SVE = b10(arm_asm),
         .HAVE_SVE2 = b10(arm_asm),
         .HAVE_SYS_TYPES_H = 1,
