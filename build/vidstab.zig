@@ -9,6 +9,7 @@ pub const meta: Meta = .{
     .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"libvidstab"},
     .license = .gpl,
+    .ffmpeg_windows_defines = &.{"VIDSTAB_EXPORTS"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 
