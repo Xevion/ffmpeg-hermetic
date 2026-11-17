@@ -1,5 +1,5 @@
 name: setup
-description: Installs zig, restores the package cache and fetches the dependencies a build needs.
+description: Installs zig, restores the package and build caches and fetches the dependencies a build needs.
 
 inputs:
   args:
@@ -18,6 +18,21 @@ runs:
         path: zig-pkg
         key: zig-pkg-${{ runner.os }}-${{ hashFiles('build.zig.zon') }}
         restore-keys: zig-pkg-${{ runner.os }}-
+    # One build cache per set of options. A fetched package's repack in p/ unpacks one directory
+    # too deep, so it stays out.
+    - id: build-key
+      shell: bash
+      run: |
+        echo "ZIG_GLOBAL_CACHE_DIR=$GITHUB_WORKSPACE/.zig-cache" >> "$GITHUB_ENV"
+        echo "key=$(printf '%s' "${{ inputs.args }}" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v6.1.0
+      with:
+        path: |
+          .zig-cache
+          !.zig-cache/p
+          !.zig-cache/tmp
+        key: zig-build-${{ runner.os }}-${{ steps.build-key.outputs.key }}-${{ github.sha }}
+        restore-keys: zig-build-${{ runner.os }}-${{ steps.build-key.outputs.key }}-
     # Upstream hosts drop connections now and then; a configure pass fetches every package.
     - name: Fetch
       shell: bash
