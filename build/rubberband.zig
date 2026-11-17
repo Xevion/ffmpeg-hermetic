@@ -12,7 +12,8 @@ pub const meta: Meta = .{
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 
-/// Rubber Band (C++) with its built-in resampler and, off macOS, its built-in FFT.
+/// Rubber Band (C++) with its built-in resampler and FFT. Upstream picks vDSP on macOS, but zig
+/// ships no Accelerate framework, so macOS takes the same built-in FFT as every other target.
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     const b = c.b;
     const src = c.lazyUpstream("rubberband") orelse return null;
@@ -21,7 +22,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
 
     var flags: std.ArrayList([]const u8) = .empty;
     flags.appendSlice(b.allocator, &.{ if (c.isMsvc()) "-std=c++14" else "-std=c++11", "-DUSE_BQRESAMPLER", "-DNO_THREAD_CHECKS", "-DNO_TIMING", "-DNDEBUG" }) catch @panic("OOM");
-    flags.append(b.allocator, if (darwin) "-DHAVE_VDSP" else "-DUSE_BUILTIN_FFT") catch @panic("OOM");
+    flags.append(b.allocator, "-DUSE_BUILTIN_FFT") catch @panic("OOM");
     if (c.isWindows()) {
         flags.appendSlice(b.allocator, &.{ "-D_WIN32", "-DNOMINMAX", "-D_USE_MATH_DEFINES" }) catch @panic("OOM");
     } else {
@@ -37,7 +38,6 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     // mathmisc.cpp uses size_t without declaring it, which libc++ does not supply transitively.
     const wrapper = b.addWriteFiles().add("mathmisc.cpp", "#include <stddef.h>\n#include \"common/mathmisc.cpp\"\n");
     mod.addCSourceFile(.{ .file = wrapper, .flags = flags.items });
-    if (darwin) mod.linkFramework("Accelerate", .{});
 
     const lib = c.staticLibrary("rubberband", mod);
     for ([_][]const u8{ "rubberband-c.h", "RubberBandStretcher.h", "RubberBandLiveShifter.h" }) |h| {
