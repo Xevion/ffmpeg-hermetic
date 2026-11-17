@@ -44,7 +44,7 @@ jobs:
       - name: Build and bundle
         run: |
           read -ra args <<< "$ARGS"
-          zig build "${args[@]}" --prefix out bundle
+          zig build "${args[@]}" --prefix out install bundle
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: bundle-${{ matrix.target }}-${{ matrix.variant }}
