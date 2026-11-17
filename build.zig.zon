@@ -86,7 +86,7 @@
         },
         .zstd = .{
             .url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz",
-            .hash = "N-V-__8AAPZ7fwAggnFm9t4Zu7VhQMY6UQlG9L0wwg9xjVsm",
+            .hash = "N-V-__8AAPZ7fwBg4JoCzM_0o2A8wxH2hsUUeiU1iuZv53L5",
             .lazy = true,
         },
         .openjpeg = .{

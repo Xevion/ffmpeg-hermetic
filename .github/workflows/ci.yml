@@ -56,8 +56,8 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-24.04, target: x86_64-windows-gnu }
-          - { os: ubuntu-24.04, target: x86_64-macos }
-          - { os: ubuntu-24.04, target: aarch64-macos }
+          - { os: ubuntu-24.04, target: x86_64-macos, extra: "-Dlibvpl=false -Drubberband=false" }
+          - { os: ubuntu-24.04, target: aarch64-macos, extra: "-Dlibvpl=false -Drubberband=false" }
           - { os: windows-2025, target: x86_64-windows-msvc }
           - { os: windows-2025, target: aarch64-windows-msvc }
     runs-on: ${{ matrix.os }}
@@ -69,5 +69,5 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/setup
         with:
-          args: -Dtarget=${{ matrix.target }} --release=fast -Dgpl -Dffmpeg=false
-      - run: zig build -Dtarget=${{ matrix.target }} --release=fast -Dgpl -Dffmpeg=false
+          args: -Dtarget=${{ matrix.target }} --release=fast -Dgpl -Dffmpeg=false ${{ matrix.extra }}
+      - run: zig build -Dtarget=${{ matrix.target }} --release=fast -Dgpl -Dffmpeg=false ${{ matrix.extra }}
