@@ -4,10 +4,6 @@ on:
   push:
   pull_request:
 
-env:
-  # Libraries enabled after the checked-in configure oracles were captured.
-  ORACLE_FLAGS: -Dopenssl=false -Dvulkan_headers=false -Damf=false -Dlibvpl=false -Dopencl=false
-
 jobs:
   build:
     name: build (${{ matrix.target }}, ${{ matrix.variant }})
@@ -34,17 +30,15 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           args: ${{ env.ARGS }}
-      - name: Oracle
-        run: |
-          dir=gen/ffmpeg/${{ matrix.oracle }}-${{ matrix.variant }}/oracle
-          [ -d "$dir" ] || { echo "no oracle for this target"; exit 0; }
-          read -ra args <<< "$ARGS $ORACLE_FLAGS"
-          zig build "${args[@]}" --prefix oracle
-          python3 tools/check_config.py oracle/share/ffmpeg-zig/config "$dir"
       - name: Build and bundle
         run: |
           read -ra args <<< "$ARGS"
           zig build "${args[@]}" --prefix out install bundle bundle-check
+      - name: Oracle
+        run: |
+          dir=gen/ffmpeg/${{ matrix.oracle }}-${{ matrix.variant }}/oracle
+          [ -d "$dir" ] || { echo "no oracle for this target"; exit 0; }
+          $(command -v python3 || command -v python) tools/check_config.py out/share/ffmpeg-zig/config "$dir"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: bundle-${{ matrix.target }}-${{ matrix.variant }}

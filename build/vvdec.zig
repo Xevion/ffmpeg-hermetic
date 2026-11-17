@@ -92,7 +92,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
     for ([_][]const u8{ "sei.h", "vvdecDecl.h" }) |h| lib.installHeader(src.path(b.fmt("include/vvdec/{s}", .{h})), b.fmt("vvdec/{s}", .{h}));
     lib.installConfigHeader(api);
     lib.installConfigHeader(version);
-    return c.single(lib);
+    return c.package(&.{.{ .lib = lib, .bundled = false }});
 }
 
 fn withDefine(b: *std.Build, base: []const []const u8, define: ?[]const u8) []const []const u8 {

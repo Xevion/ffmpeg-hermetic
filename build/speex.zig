@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "speex",
     .version = "1.2.1",
     .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libspeex"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 

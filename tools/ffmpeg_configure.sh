@@ -28,6 +28,10 @@ exec zig $sub "\$@"
 WRAP
   chmod +x "$bld/tools/$sub"
 done
+for shader in glslc glslang glslangValidator; do # keep the host's shader compiler out of the vulkan probe
+  printf '#!/bin/sh\nexit 1\n' > "$bld/tools/$shader"
+  chmod +x "$bld/tools/$shader"
+done
 printf '#!/bin/sh\nexec zig ar "$@"\n' > "$bld/tools/ar"
 printf '#!/bin/sh\nexec zig ranlib "$@"\n' > "$bld/tools/ranlib"
 chmod +x "$bld/tools/ar" "$bld/tools/ranlib"
@@ -68,8 +72,58 @@ Description: ffnvcodec
 Cflags: -I$nvh/include
 PC
 
-gpl=()
-[ "$variant" = gpl ] && gpl=(--enable-gpl --enable-libx264 --enable-libx265)
+requires() { # name requires [requires private]
+  printf 'Requires: %s\nRequires.private: %s\n' "${2:-}" "${3:-}" >> "$bld/pkgconfig/$1.pc"
+}
+cflags() { # name flags
+  sed -i "s|^Cflags: .*|Cflags: $2|" "$bld/pkgconfig/$1.pc"
+}
+pc vorbis 1.3.7 -lvorbis "-lm -logg"
+pc vorbisenc 1.3.7 -lvorbisenc
+requires vorbisenc vorbis
+pc libwebp 1.6.0 -lwebp "-lsharpyuv -lm -lpthread"
+pc libwebpmux 1.6.0 -lwebpmux
+requires libwebpmux libwebp
+pc libopenjp2 2.5.4 -lopenjp2 -lm "-I$prefix/include/openjpeg-2.5"
+cflags libopenjp2 "-I$prefix/include/openjpeg-2.5"
+pc freetype2 2.15.0 -lfreetype
+cflags freetype2 "-I$prefix/include/freetype2"
+pc fribidi 1.0.18 -lfribidi
+cflags fribidi "-I$prefix/include/fribidi"
+pc harfbuzz 15.1.0 -lharfbuzz "-lc++ -lm -lpthread"
+cflags harfbuzz "-I$prefix/include/harfbuzz"
+requires harfbuzz "" freetype2
+pc libass 0.17.5 -lass -lm
+requires libass "" "fribidi harfbuzz freetype2"
+pc libhwy 1.4.0 -lhwy -lc++
+pc libbrotlicommon 1.2.1 -lbrotlicommon -lm
+pc libbrotlidec 1.2.1 -lbrotlidec
+requires libbrotlidec libbrotlicommon
+pc libbrotlienc 1.2.1 -lbrotlienc
+requires libbrotlienc libbrotlicommon
+pc libjxl 0.13.0 -ljxl "-ljxl_cms -lc++ -lm -lpthread"
+requires libjxl "" "libhwy libbrotlienc libbrotlidec"
+pc libjxl_threads 0.13.0 -ljxl_threads "-lc++ -lm -lpthread"
+pc speex 1.2.1 -lspeex -lm
+pc zimg 3.0.6 -lzimg "-lc++ -lm"
+pc libvvenc 1.14.0 -lvvenc "-lc++ -lm -lpthread"
+pc libvmaf 3.2.1 -lvmaf "-lc++ -lm -lpthread"
+cflags libvmaf "-I$prefix/include/libvmaf"
+pc libxml-2.0 2.15.4 -lxml2 "-lm -lpthread -ldl"
+cflags libxml-2.0 "-I$prefix/include/libxml2"
+pc vidstab 1.1.2 -lvidstab -lm
+pc rubberband 4.0.0 -lrubberband "-lc++ -lm -lpthread"
+pc openssl 3.6.5 "-lssl -lcrypto" "-ldl -lpthread"
+pc vulkan 1.4.368 ""
+pc OpenCL 3.0 -lOpenCL "-ldl -lpthread"
+pc vpl 2.17.0 -lvpl "-lc++ -ldl -lpthread"
+cflags vpl "-I$prefix/include/vpl"
+
+gpl=() tls=(--enable-openssl)
+if [ "$variant" = gpl ]; then
+  gpl=(--enable-gpl --enable-libx264 --enable-libx265 --enable-libxvid --enable-libvidstab --enable-librubberband)
+  tls=()
+fi
 cd "$bld"
 PATH=$bld/tools:$PATH PKG_CONFIG_LIBDIR=$bld/pkgconfig PKG_CONFIG_PATH='' "$src/configure" \
   --prefix=/ffoxide-ffmpeg --cc="$bld/tools/cc" --cxx="$bld/tools/c++" --ar="$bld/tools/ar" \
@@ -80,7 +134,11 @@ PATH=$bld/tools:$PATH PKG_CONFIG_LIBDIR=$bld/pkgconfig PKG_CONFIG_PATH='' "$src/
   --disable-autodetect --enable-runtime-cpudetect --enable-network --enable-pixelutils \
   --enable-zlib --enable-libdav1d --enable-libopus --enable-libopenh264 --enable-libaom --enable-libkvazaar \
   --enable-libsvtav1 --enable-libmp3lame --enable-libvpx \
+  --enable-libvorbis --enable-libwebp --enable-libopenjpeg --enable-libtheora --enable-libsoxr --enable-libzimg \
+  --enable-bzlib --enable-lzma --enable-libfreetype --enable-libfribidi --enable-libharfbuzz --enable-libass \
+  --enable-libjxl --enable-libspeex --enable-libtwolame --enable-libgsm --enable-libsnappy --enable-libxml2 \
+  --enable-libvvenc --enable-libvmaf --enable-vulkan --enable-amf --enable-libvpl --enable-opencl \
   --enable-ffnvcodec --enable-nvenc --enable-nvdec --enable-cuvid --enable-cuda-llvm --enable-vaapi --enable-libdrm \
   --x86asmexe="${NASM:-nasm}" --nvcc="${CLANG:-clang}" \
-  "${gpl[@]}" ${EXTRA_CONFIGURE:-}
+  "${gpl[@]}" "${tls[@]}" ${EXTRA_CONFIGURE:-}
 echo "configured: $bld (repo $repo)"

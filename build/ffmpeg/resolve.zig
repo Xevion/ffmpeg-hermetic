@@ -54,6 +54,11 @@ const disable_unless = [_]struct { []const []const u8, []const []const u8 }{
     .{ &.{ "zlib_gzip", "gzip" }, &.{ "shader_compression", "resource_compression" } },
 };
 
+/// configure's probes that need two libraries: the second set is enabled when all of the first are.
+const enable_when = [_]struct { []const []const u8, []const []const u8 }{
+    .{ &.{ "opencl", "vaapi" }, &.{"opencl_vaapi_intel_media"} },
+};
+
 pub const Options = struct {
     gpl: bool,
     version3: bool = false,
@@ -156,6 +161,10 @@ pub const State = struct {
             for (list) |name| if (!s.given.contains(name)) {
                 std.debug.panic("build/ffmpeg/config.zig gives no value for {s}", .{name});
             };
+        }
+        for (enable_when) |r| {
+            if (!s.all(r[0])) continue;
+            for (r[1]) |name| s.put(name, .yes);
         }
         for (disable_unless) |r| {
             for (r[0]) |need| if (!s.enabled(need)) {

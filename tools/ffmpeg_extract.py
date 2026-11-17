@@ -67,8 +67,14 @@ def main():
     bld, out = os.path.realpath(sys.argv[1]), sys.argv[2]
     src_root = os.path.realpath(os.path.join(bld, "src"))
     plan = subprocess.run(["make", "-n", "V=1"], cwd=bld, capture_output=True, text=True, check=True).stdout
-    sources = {lib: {"c": {}, "nasm": set(), "gas": set(), "cuda": set(), "headers": set()} for lib in LIBS}
+    sources = {lib: {"c": {}, "nasm": set(), "gas": set(), "cuda": set(), "opencl": set(), "headers": set()} for lib in LIBS}
     for line in plan.splitlines():
+        words = line.split()
+        if len(words) == 3 and words[0].endswith("/tools/source2c") and words[1].startswith(src_root + "/"):
+            rel = os.path.relpath(words[1], src_root)
+            if rel.split("/")[0] in sources:
+                sources[rel.split("/")[0]]["opencl"].add(rel)
+            continue
         if " -o " not in line:
             continue
         tokens = shlex.split(line)
@@ -117,7 +123,7 @@ def main():
         name = lib[3:]
         for inc, files in sources[lib]["c"].items():
             lines += [f"{name} c {','.join(inc) or '-'} {f}" for f in files]
-        for kind in ("nasm", "gas", "cuda"):
+        for kind in ("nasm", "gas", "cuda", "opencl"):
             lines += [f"{name} {kind} - {f}" for f in sources[lib][kind]]
         lines += [f"{name} header - {h}" for h in sources[lib]["headers"]]
     with open(os.path.join(out, "sources.txt"), "w") as f:

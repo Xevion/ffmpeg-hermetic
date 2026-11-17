@@ -28,6 +28,11 @@ ffmpeg_include_subdirs: []const []const u8 = &.{},
 /// Names configure sets only while probing this library, as the pinned version answers
 /// (`libx264_hdr10`, vaapi's `VA*` types). They are on when the library is built, unset otherwise.
 ffmpeg_probes: []const []const u8 = &.{},
+/// Preprocessor defines FFmpeg's configure adds to every compile once it has probed this library.
+ffmpeg_defines: []const []const u8 = &.{},
+/// Preprocessor defines its pkg-config Cflags add for static use on Windows, which FFmpeg's
+/// own sources need so the installed headers do not declare dllimport.
+ffmpeg_windows_defines: []const []const u8 = &.{},
 /// Libraries a consumer of its archives links besides the package's own.
 system_libs: SystemLibs = .{},
 license: License = .lgpl,

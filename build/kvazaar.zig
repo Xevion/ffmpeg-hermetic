@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .version = "2.3.2",
     .licenses = &.{ "LICENSE", "LICENSE.EXT.greatest" },
     .ffmpeg = &.{"libkvazaar"},
+    .ffmpeg_windows_defines = &.{"KVZ_STATIC_LIB"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 

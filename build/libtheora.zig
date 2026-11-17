@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .version = "1.2.0",
     .licenses = &.{ "COPYING", "LICENSE" },
     .needs = &.{"libogg"},
+    .ffmpeg = &.{"libtheora"},
 };
 
 /// libtheoradec and libtheoraenc. The x86 paths are inline assembly with cpuid dispatch, so

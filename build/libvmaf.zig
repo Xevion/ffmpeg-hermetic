@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libvmaf",
     .version = "3.2.1",
     .licenses = &.{"LICENSE"},
+    .ffmpeg = &.{"libvmaf"},
     .ffmpeg_include_subdirs = &.{"libvmaf"},
     .supports = Meta.support.notMsvc,
     .system_libs = .{ .linux = &.{ "m", "pthread" } },

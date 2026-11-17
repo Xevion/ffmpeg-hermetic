@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "vvenc",
     .version = "1.14.0",
     .licenses = &.{"LICENSE.txt"},
+    .ffmpeg = &.{"libvvenc"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 
@@ -67,6 +68,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         }
     } else {
         mod.addCSourceFiles(.{ .root = root, .files = &common_sse41, .flags = flags.items });
+        mod.addCSourceFiles(.{ .root = root, .files = &x86_xsave, .flags = flags.items });
         mod.addCSourceFiles(.{ .root = root, .files = &x86_sse41, .flags = withDefine(b, flags.items, "-DUSE_SSE41") });
         mod.addCSourceFiles(.{ .root = root, .files = &x86_sse42, .flags = withDefine(b, flags.items, "-DUSE_SSE42") });
     }

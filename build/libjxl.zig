@@ -10,6 +10,8 @@ pub const meta: Meta = .{
     .licenses = &.{ "LICENSE", "PATENTS" },
     .extra_sources = &.{.{ .zon = "skcms", .version = "96d9171c", .licenses = &.{"LICENSE"} }},
     .needs = &.{ "highway", "brotli" },
+    .ffmpeg = &.{"libjxl"},
+    .ffmpeg_probes = &.{"libjxl_threads"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 

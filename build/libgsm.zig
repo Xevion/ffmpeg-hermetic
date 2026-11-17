@@ -7,6 +7,8 @@ pub const meta: Meta = .{
     .name = "libgsm",
     .version = "1.0.24",
     .licenses = &.{"COPYRIGHT"},
+    .ffmpeg = &.{"libgsm"},
+    .ffmpeg_probes = &.{"gsm_h"},
 };
 
 /// The GSM 06.10 full-rate codec, with the WAV49 frame packing option.

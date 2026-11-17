@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "bzip2",
     .version = "1.0.8",
     .licenses = &.{"LICENSE"},
+    .ffmpeg = &.{"bzlib"},
 };
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

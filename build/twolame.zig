@@ -7,6 +7,8 @@ pub const meta: Meta = .{
     .name = "twolame",
     .version = "0.4.0",
     .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libtwolame"},
+    .ffmpeg_windows_defines = &.{"LIBTWOLAME_STATIC"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 

@@ -69,7 +69,12 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
 
     var dep_includes: std.ArrayList(std.Build.LazyPath) = .empty;
     var dep_archives: std.ArrayList(*std.Build.Step.Compile) = .empty;
+    var base_flags: std.ArrayList([]const u8) = .empty;
+    base_flags.appendSlice(b.allocator, &common_flags) catch @panic("OOM");
     for (deps) |dep| {
+        for ([_][]const []const u8{ dep.meta.ffmpeg_defines, if (t.os.tag == .windows) dep.meta.ffmpeg_windows_defines else &.{} }) |defines| {
+            for (defines) |d| base_flags.append(b.allocator, b.fmt("-D{s}", .{d})) catch @panic("OOM");
+        }
         const tree = dep.output.include;
         dep_includes.append(b.allocator, tree) catch @panic("OOM");
         for (dep.output.archives) |archive| dep_archives.append(b.allocator, archive.lib) catch @panic("OOM");
@@ -97,7 +102,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
         if (!state.enabled(lib.name)) continue;
         const srcs = state.sources(lib, dirs);
         var flags: std.ArrayList([]const u8) = .empty;
-        flags.appendSlice(b.allocator, &common_flags) catch @panic("OOM");
+        flags.appendSlice(b.allocator, base_flags.items) catch @panic("OOM");
         flags.append(b.allocator, b.fmt("-DBUILDING_{s}", .{lib.name})) catch @panic("OOM");
         if (t.cpu.arch.isX86()) flags.append(b.allocator, "-mstack-alignment=16") catch @panic("OOM");
 
@@ -176,7 +181,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
         .gen = gen,
         .src = src,
         .includes = dep_includes.items,
-        .flags = &common_flags,
+        .flags = base_flags.items,
         .embed = embed,
         .compress = state.enabled("resource_compression"),
         .libs = out.items,

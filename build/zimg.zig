@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "zimg",
     .version = "3.0.6",
     .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libzimg"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 

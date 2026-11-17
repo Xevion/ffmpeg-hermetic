@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "snappy",
     .version = "1.3.1",
     .licenses = &.{"COPYING"},
+    .ffmpeg = &.{"libsnappy"},
 };
 
 /// Snappy (C++) with its C API. Upstream compiles one kernel per target baseline, with no runtime dispatch.

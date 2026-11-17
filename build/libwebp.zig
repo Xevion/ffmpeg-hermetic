@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libwebp",
     .version = "1.6.0",
     .licenses = &.{ "COPYING", "PATENTS" },
+    .ffmpeg = &.{"libwebp"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 
@@ -90,7 +91,7 @@ pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {
         .{ .lib = webp, .links = &.{"sharpyuv"} },
         .{ .lib = sharpyuv_lib },
         .{ .lib = mux_lib, .links = &.{"webp"} },
-        .{ .lib = demux_lib, .links = &.{"webp"} },
+        .{ .lib = demux_lib, .links = &.{"webp"}, .bundled = false },
     });
 }
 

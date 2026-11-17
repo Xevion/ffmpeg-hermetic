@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .version = "0.17.5",
     .licenses = &.{"COPYING"},
     .needs = &.{ "freetype", "fribidi", "harfbuzz" },
+    .ffmpeg = &.{"libass"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 

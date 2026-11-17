@@ -10,6 +10,7 @@ pub const meta: Meta = .{
     .version = "1.4.368",
     .licenses = &.{"LICENSE.md"},
     .ffmpeg = &.{"vulkan"},
+    .ffmpeg_probes = &.{"vulkan_1_4"},
 };
 
 pub fn build(c: Ctx, _: Nasm) ?Ctx.Output {

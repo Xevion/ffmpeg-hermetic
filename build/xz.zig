@@ -7,6 +7,8 @@ pub const meta: Meta = .{
     .name = "xz",
     .version = "5.8.4",
     .licenses = &.{ "COPYING", "COPYING.0BSD" },
+    .ffmpeg = &.{"lzma"},
+    .ffmpeg_windows_defines = &.{"LZMA_API_STATIC"},
     .system_libs = .{ .linux = &.{"pthread"} },
 };
 

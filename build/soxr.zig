@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "soxr",
     .version = "0.1.3",
     .licenses = &.{ "COPYING.LGPL", "LICENCE" },
+    .ffmpeg = &.{"libsoxr"},
     .system_libs = .{ .linux = &.{"m"} },
 };
 

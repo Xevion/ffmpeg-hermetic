@@ -9,6 +9,8 @@ pub const meta: Meta = .{
     .version = "2.17.0",
     .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"libvpl"},
+    .ffmpeg_probes = &.{ "libmfx", "struct_mfxConfigInterface", "MFX_CODEC_VP9" },
+    .ffmpeg_defines = &.{"MFX_DEPRECATED_OFF"},
     .ffmpeg_include_subdirs = &.{"vpl"},
     .system_libs = .{ .linux = &.{ "pthread", "dl" } },
 };
