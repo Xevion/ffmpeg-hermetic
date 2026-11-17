@@ -30,7 +30,8 @@ def parse(path):
     with open(path) as f:
         for line in f:
             m = DEFINE.match(line)
-            if m and not m.group(1).endswith("_H"):
+            # Include guards (`FFMPEG_CONFIG_H`) have no value; HAVE_FOO_H keys do.
+            if m and not (m.group(1).endswith("_H") and m.group(2) is None):
                 values[m.group(1)] = (m.group(2) or "").strip()
     return values
 
