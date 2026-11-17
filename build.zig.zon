@@ -15,8 +15,8 @@
             .hash = "N-V-__8AAAmivwH7RvCrZo25NNu0lx2Sw-ogZhmqGXvorlHg",
         },
         .openh264 = .{
-            .url = "https://github.com/cisco/openh264/archive/refs/tags/v2.6.0.tar.gz",
-            .hash = "N-V-__8AALjwUwSnHjJzQeIxzk1njqiHAwEjKvC-eCay2HR0",
+            .url = "https://github.com/cisco/openh264/archive/refs/tags/v2.7.0.tar.gz",
+            .hash = "N-V-__8AAIjmVQTSxU5cUDPnrlh0HdBJFovAcNnfwjDzJaXA",
         },
         .kvazaar = .{
             .url = "https://github.com/ultravideo/kvazaar/releases/download/v2.3.2/kvazaar-2.3.2.tar.xz",

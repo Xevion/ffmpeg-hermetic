@@ -5,7 +5,7 @@ const Meta = @import("Meta.zig");
 
 pub const meta: Meta = .{
     .name = "openh264",
-    .version = "2.6.0",
+    .version = "2.7.0",
     .licenses = &.{"LICENSE"},
     .ffmpeg = &.{"libopenh264"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
