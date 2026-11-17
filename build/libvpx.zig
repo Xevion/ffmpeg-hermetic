@@ -30,17 +30,10 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     flags.append(b.allocator, "-DNDEBUG") catch @panic("OOM");
     if (linux) flags.appendSlice(b.allocator, &.{ "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=0", "-D_LARGEFILE_SOURCE", "-D_FILE_OFFSET_BITS=64" }) catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, gen: *std.Build.Step.WriteFile, rtcd: std.Build.LazyPath) void {
-            m.addIncludePath(gen.getDirectory());
-            m.addIncludePath(rtcd);
-            m.addIncludePath(s.path(""));
-        }
-    }.f;
-    const rtcd = b.path(gen_dir);
+    const setup: Ctx.Setup = .{ .includes = &.{ generated.getDirectory(), b.path(gen_dir), src.path("") } };
 
     const mod = c.module(.{});
-    setup(mod, src, generated, rtcd);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &common_c, .flags = flags.items });
     mod.addCSourceFile(.{ .file = config_c, .flags = flags.items });
 
@@ -57,11 +50,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "vpx_avx512", .features = &.{ .avx512f, .avx512cd, .avx512bw, .avx512dq, .avx512vl }, .files = &avx512_c },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .x86_features = isa.features },
-                .root = src.path(""),
-                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
-            }, setup, .{ src, generated, rtcd });
+                .setup = setup,
+                .groups = &.{.{ .root = src.path(""), .files = isa.files, .flags = flags.items }},
+            });
         }
 
         nasm.addFiles(c, mod, .{
@@ -83,11 +76,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "vpx_sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .files = &aarch64_sve2_c },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .aarch64_features = isa.features },
-                .root = src.path(""),
-                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
-            }, setup, .{ src, generated, rtcd });
+                .setup = setup,
+                .groups = &.{.{ .root = src.path(""), .files = isa.files, .flags = flags.items }},
+            });
         }
     }
 

@@ -36,6 +36,12 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
         .include_path = "x265_config.h",
     }, .{ .X265_BUILD = api_build, .ENABLE_ALPHA = 0, .ENABLE_MULTIVIEW = 0, .ENABLE_SCC_EXT = 0 });
 
+    const root = src.path("source");
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{config},
+        .includes = c.includeDirs(src.path(""), &.{ "source", "source/common", "source/encoder" }),
+    };
+
     const mod = c.module(.{ .cpp = true });
 
     for (depths) |d| {
@@ -83,21 +89,20 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
         var groups: std.ArrayList(Group) = .empty;
         groups.appendSlice(b.allocator, &.{
-            .{ .files = &common, .flags = flags.items },
-            .{ .files = &.{"common/version.cpp"}, .flags = version_flags },
-            .{ .files = &.{"common/param.cpp"}, .flags = param_flags },
-            .{ .files = &.{"encoder/api.cpp"}, .flags = api_flags },
-            .{ .files = &encoder, .flags = flags.items },
+            .{ .root = root, .files = &common, .flags = flags.items },
+            .{ .root = root, .files = &.{"common/version.cpp"}, .flags = version_flags },
+            .{ .root = root, .files = &.{"common/param.cpp"}, .flags = param_flags },
+            .{ .root = root, .files = &.{"encoder/api.cpp"}, .flags = api_flags },
+            .{ .root = root, .files = &encoder, .flags = flags.items },
         }) catch @panic("OOM");
-        if (windows) groups.append(b.allocator, .{ .files = &.{"common/winxp.cpp"}, .flags = flags.items }) catch @panic("OOM");
-        if (x86) groups.append(b.allocator, .{ .files = &.{ "common/x86/asm-primitives.cpp", "common/vec/vec-primitives.cpp" }, .flags = flags.items }) catch @panic("OOM");
+        if (windows) groups.append(b.allocator, .{ .root = root, .files = &.{"common/winxp.cpp"}, .flags = flags.items }) catch @panic("OOM");
+        if (x86) groups.append(b.allocator, .{ .root = root, .files = &.{ "common/x86/asm-primitives.cpp", "common/vec/vec-primitives.cpp" }, .flags = flags.items }) catch @panic("OOM");
 
-        const root = src.path("source");
-        c.addObjectsTo(mod, b.fmt("x265_{d}bit", .{d.bits}), .{
+        c.addSources(mod, b.fmt("x265_{d}bit", .{d.bits}), .{
             .module = .{ .cpp = true },
-            .root = root,
+            .setup = setup,
             .groups = groups.items,
-        }, setup, .{ src, config });
+        });
 
         if (arm64) {
             const asm_flags = [_][]const u8{
@@ -121,14 +126,14 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
                 .{ .name = "sve2_bitperm", .features = &.{ .v9a, .i8mm, .sve2_bitperm }, .cpp = &.{}, .asm_files = &.{"common/aarch64/pixel-util-sve2-bitperm.S"} },
             };
             for (isas) |isa| {
-                c.addObjectsTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, isa.name }), .{
+                c.addSources(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, isa.name }), .{
                     .module = .{ .cpp = true, .aarch64_features = isa.features },
-                    .root = root,
+                    .setup = setup,
                     .groups = &.{
-                        .{ .files = isa.cpp, .flags = flags.items },
-                        .{ .files = isa.asm_files, .flags = &asm_flags },
+                        .{ .root = root, .files = isa.cpp, .flags = flags.items },
+                        .{ .root = root, .files = isa.asm_files, .flags = &asm_flags },
                     },
-                }, setup, .{ src, config });
+                });
             }
         }
 
@@ -139,11 +144,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
                 .{ .sse4_1, "common/vec/dct-sse41.cpp" },
             };
             for (isas) |isa| {
-                c.addObjectsTo(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, @tagName(isa[0]) }), .{
+                c.addSources(mod, b.fmt("x265_{d}bit_{s}", .{ d.bits, @tagName(isa[0]) }), .{
                     .module = .{ .cpp = true, .x86_features = &.{isa[0]} },
-                    .root = root,
-                    .groups = &.{.{ .files = &.{isa[1]}, .flags = flags.items }},
-                }, setup, .{ src, config });
+                    .setup = setup,
+                    .groups = &.{.{ .root = root, .files = &.{isa[1]}, .flags = flags.items }},
+                });
             }
 
             var asm_flags: std.ArrayList([]const u8) = .empty;
@@ -161,7 +166,13 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             asm_files.appendSlice(b.allocator, &asm_common) catch @panic("OOM");
             asm_files.appendSlice(b.allocator, if (high) &asm_high else &asm_8bit) catch @panic("OOM");
             if (!x86_64) asm_files.append(b.allocator, "common/x86/pixel-32.asm") catch @panic("OOM");
-            addAsm(c, nasm, mod, d.bits, src.path("source"), src.path("source/common/x86"), asm_files.items, asm_flags.items);
+            nasm.addFiles(c, mod, .{
+                .root = root,
+                .files = asm_files.items,
+                .include_dirs = &.{src.path("source/common/x86")},
+                .flags = asm_flags.items,
+                .object_prefix = b.fmt("x265_{d}bit_", .{d.bits}),
+            });
         }
     }
 
@@ -171,36 +182,7 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     return lib;
 }
 
-fn setup(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader) void {
-    m.addConfigHeader(cfg);
-    for ([_][]const u8{ "source", "source/common", "source/encoder" }) |dir| m.addIncludePath(s.path(dir));
-}
-
 const Group = Ctx.SourceGroup;
-
-/// Object names carry the bit depth so the three sets never share an archive member name.
-fn addAsm(
-    c: Ctx,
-    nasm: Nasm,
-    into: *std.Build.Module,
-    bits: u8,
-    root: std.Build.LazyPath,
-    include_dir: std.Build.LazyPath,
-    files: []const []const u8,
-    flags: []const []const u8,
-) void {
-    for (files) |file| {
-        const run = c.b.addRunArtifact(nasm.exe);
-        run.addArgs(&.{ "-f", nasm.format });
-        run.addDirectoryArg2(include_dir, .{ .prefix = "-I", .suffix = "/" });
-        run.addArgs(flags);
-        run.addArg("-MD");
-        _ = run.addDepFileOutputArg2("obj.d", .{});
-        run.addFileArg2(root.path(c.b, file), .{});
-        run.addArg("-o");
-        into.addObjectFile(run.addOutputFileArg2(c.b.fmt("x265_{d}bit_{s}.o", .{ bits, std.fs.path.stem(file) }), .{}));
-    }
-}
 
 const common = [_][]const u8{
     "common/bitstream.cpp",  "common/common.cpp",     "common/constants.cpp",
@@ -217,12 +199,12 @@ const common = [_][]const u8{
 };
 
 const encoder = [_][]const u8{
-    "encoder/analysis.cpp",    "encoder/bitcost.cpp",          "encoder/dpb.cpp",
-    "encoder/encoder.cpp",     "encoder/entropy.cpp",          "encoder/frameencoder.cpp",
-    "encoder/framefilter.cpp", "encoder/level.cpp",            "encoder/motion.cpp",
-    "encoder/nal.cpp",         "encoder/ratecontrol.cpp",      "encoder/reference.cpp",
-    "encoder/sao.cpp",         "encoder/search.cpp",           "encoder/sei.cpp",
-    "encoder/slicetype.cpp",   "encoder/threadedme.cpp",       "encoder/weightPrediction.cpp",
+    "encoder/analysis.cpp",    "encoder/bitcost.cpp",     "encoder/dpb.cpp",
+    "encoder/encoder.cpp",     "encoder/entropy.cpp",     "encoder/frameencoder.cpp",
+    "encoder/framefilter.cpp", "encoder/level.cpp",       "encoder/motion.cpp",
+    "encoder/nal.cpp",         "encoder/ratecontrol.cpp", "encoder/reference.cpp",
+    "encoder/sao.cpp",         "encoder/search.cpp",      "encoder/sei.cpp",
+    "encoder/slicetype.cpp",   "encoder/threadedme.cpp",  "encoder/weightPrediction.cpp",
 };
 
 const asm_common = [_][]const u8{
@@ -249,10 +231,10 @@ const aarch64_neon_cpp = [_][]const u8{
 };
 
 const aarch64_neon_asm = [_][]const u8{
-    "common/aarch64/asm.S",               "common/aarch64/mc-a.S",       "common/aarch64/mc-a-common.S",
-    "common/aarch64/sad-a.S",             "common/aarch64/pixel-util.S", "common/aarch64/pixel-util-common.S",
-    "common/aarch64/p2s.S",               "common/aarch64/p2s-common.S", "common/aarch64/blockcopy8.S",
-    "common/aarch64/ssd-a.S",             "common/aarch64/ssd-a-common.S", "common/aarch64/intrapred.S",
+    "common/aarch64/asm.S",   "common/aarch64/mc-a.S",         "common/aarch64/mc-a-common.S",
+    "common/aarch64/sad-a.S", "common/aarch64/pixel-util.S",   "common/aarch64/pixel-util-common.S",
+    "common/aarch64/p2s.S",   "common/aarch64/p2s-common.S",   "common/aarch64/blockcopy8.S",
+    "common/aarch64/ssd-a.S", "common/aarch64/ssd-a-common.S", "common/aarch64/intrapred.S",
     "common/aarch64/dct.S",
 };
 

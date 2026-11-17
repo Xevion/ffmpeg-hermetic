@@ -35,34 +35,24 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
         "-fnew-alignment=8",       "-fno-cxx-exceptions",  "-fno-slp-vectorize", "-fno-vectorize",
     }) catch @panic("OOM");
 
-    const setup = struct {
-        fn f(
-            m: *std.Build.Module,
-            s: *std.Build.Dependency,
-            hwy: *std.Build.Dependency,
-            brotli: *std.Build.Dependency,
-            version_header: *std.Build.Step.ConfigHeader,
-            generated: *std.Build.Step.WriteFile,
-        ) void {
-            m.addIncludePath(s.path(""));
-            m.addIncludePath(s.path("lib/include"));
-            m.addIncludePath(hwy.path(""));
-            m.addIncludePath(brotli.path("c/include"));
-            m.addConfigHeader(version_header);
-            m.addIncludePath(generated.getDirectory());
-        }
-    }.f;
-    const args = .{ src, hwy_src, brotli_src, version, exports };
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{version},
+        .includes = &.{ src.path(""), src.path("lib/include"), hwy_src.path(""), brotli_src.path("c/include"), exports.getDirectory() },
+    };
+    const skcms_setup: Ctx.Setup = .{
+        .config_headers = setup.config_headers,
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{ setup.includes, &.{skcms.path("")} }) catch @panic("OOM"),
+    };
 
     const jxl_flags = withFlags(b, flags.items, &.{ "-DJXL_STATIC_DEFINE", "-DJXL_INTERNAL_LIBRARY_BUILD" });
     const jxl_mod = c.module(.{ .cpp = true });
-    @call(.auto, setup, .{jxl_mod} ++ args);
+    setup.apply(jxl_mod);
     jxl_mod.addCSourceFiles(.{ .root = src.path("lib"), .files = &(jxl_dec ++ jxl_dec_jpeg ++ jxl_dec_box ++ jxl_enc), .flags = jxl_flags });
     jxl_mod.addCSourceFiles(.{ .root = src.path("lib"), .files = &.{"jxl/enc_fast_lossless.cc"}, .flags = withFlags(b, jxl_flags, &.{"-O3"}) });
     const jxl = c.staticLibrary("jxl", jxl_mod);
 
     const threads_mod = c.module(.{ .cpp = true });
-    @call(.auto, setup, .{threads_mod} ++ args);
+    setup.apply(threads_mod);
     threads_mod.addCSourceFiles(.{
         .root = src.path("lib"),
         .files = &.{ "threads/resizable_parallel_runner.cc", "threads/thread_parallel_runner.cc", "threads/thread_parallel_runner_internal.cc" },
@@ -76,8 +66,7 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     if (c.target.result.os.tag == .windows and c.target.result.abi.isGnu()) cms_flags.append(b.allocator, "-DSKCMS_HAS_MUSTTAIL=0") catch @panic("OOM");
     if (!x86) cms_flags.appendSlice(b.allocator, &.{ "-DSKCMS_DISABLE_HSW", "-DSKCMS_DISABLE_SKX" }) catch @panic("OOM");
     const cms_mod = c.module(.{ .cpp = true });
-    @call(.auto, setup, .{cms_mod} ++ args);
-    cms_mod.addIncludePath(skcms.path(""));
+    skcms_setup.apply(cms_mod);
     cms_mod.addCSourceFiles(.{ .root = src.path("lib"), .files = &.{"jxl/cms/jxl_cms.cc"}, .flags = cms_flags.items });
     cms_mod.addCSourceFiles(.{ .root = skcms.path(""), .files = &.{ "skcms.cc", "src/skcms_TransformBaseline.cc" }, .flags = cms_flags.items });
     if (x86) {
@@ -86,11 +75,11 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
             .{ .name = "skcms_skx", .file = "src/skcms_TransformSkx.cc", .features = &.{ .avx512f, .avx512dq, .avx512cd, .avx512bw, .avx512vl } },
         };
         for (kernels) |k| {
-            const m = c.module(.{ .cpp = true, .x86_features = k.features });
-            @call(.auto, setup, .{m} ++ args);
-            m.addIncludePath(skcms.path(""));
-            m.addCSourceFiles(.{ .root = skcms.path(""), .files = &.{k.file}, .flags = cms_flags.items });
-            c.addObjectTo(cms_mod, k.name, m);
+            c.addSources(cms_mod, k.name, .{
+                .module = .{ .cpp = true, .x86_features = k.features },
+                .setup = skcms_setup,
+                .groups = &.{.{ .root = skcms.path(""), .files = &.{k.file}, .flags = cms_flags.items }},
+            });
         }
     }
     const cms = c.staticLibrary("jxl_cms", cms_mod);

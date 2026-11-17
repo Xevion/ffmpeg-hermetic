@@ -43,14 +43,14 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
 
     const mod = c.module(.{ .cpp = true });
     for (components) |comp| {
-        c.addObjectsTo(mod, b.fmt("openh264_{s}", .{std.fs.path.basename(comp.dir)}), .{
+        c.addSources(mod, b.fmt("openh264_{s}", .{std.fs.path.basename(comp.dir)}), .{
             .module = .{ .cpp = true },
-            .root = src.path(comp.dir),
+            .setup = setup(c, src, generated, comp.includes, arm64),
             .groups = &.{
-                .{ .files = comp.cpp, .flags = flags.items },
-                .{ .files = if (arm64) comp.arm64_asm else &.{}, .flags = flags.items },
+                .{ .root = src.path(comp.dir), .files = comp.cpp, .flags = flags.items },
+                .{ .root = src.path(comp.dir), .files = if (arm64) comp.arm64_asm else &.{}, .flags = flags.items },
             },
-        }, setup, .{ src, generated, comp.includes, arm64 });
+        });
         if (x86) {
             nasm.addFiles(c, mod, .{
                 .root = src.path(comp.dir),
@@ -68,12 +68,12 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     return lib;
 }
 
-fn setup(m: *std.Build.Module, src: *std.Build.Dependency, generated: *std.Build.Step.WriteFile, includes: []const []const u8, arm64: bool) void {
-    m.addIncludePath(generated.getDirectory());
-    m.addIncludePath(src.path("codec/api/wels"));
-    m.addIncludePath(src.path("codec/common/inc"));
-    for (includes) |dir| m.addIncludePath(src.path(dir));
-    if (arm64) m.addIncludePath(src.path("codec/common/arm64"));
+fn setup(c: Ctx, src: *std.Build.Dependency, generated: *std.Build.Step.WriteFile, includes: []const []const u8, arm64: bool) Ctx.Setup {
+    var out: std.ArrayList(std.Build.LazyPath) = .empty;
+    out.appendSlice(c.b.allocator, &.{ generated.getDirectory(), src.path("codec/api/wels"), src.path("codec/common/inc") }) catch @panic("OOM");
+    out.appendSlice(c.b.allocator, c.includeDirs(src.path(""), includes)) catch @panic("OOM");
+    if (arm64) out.append(c.b.allocator, src.path("codec/common/arm64")) catch @panic("OOM");
+    return .{ .includes = out.items };
 }
 
 const components = [_]Component{

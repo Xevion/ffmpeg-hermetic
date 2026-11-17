@@ -23,40 +23,39 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         \\
     );
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, gen: *std.Build.Step.WriteFile) void {
-            m.addIncludePath(gen.getDirectory());
-            for ([_][]const u8{ "src", "src/extras", "src/strategies" }) |dir| m.addIncludePath(s.path(dir));
-            if (m.resolved_target.?.result.abi == .msvc) m.addIncludePath(s.path("src/threadwrapper/include"));
-        }
-    }.f;
+    var includes: std.ArrayList(std.Build.LazyPath) = .empty;
+    includes.append(c.b.allocator, generated.getDirectory()) catch @panic("OOM");
+    includes.appendSlice(c.b.allocator, c.includeDirs(src.path(""), &.{ "src", "src/extras", "src/strategies" })) catch @panic("OOM");
+    if (msvc) includes.append(c.b.allocator, src.path("src/threadwrapper/include")) catch @panic("OOM");
+    const setup: Ctx.Setup = .{ .includes = includes.items };
 
     const mod = c.module(.{});
-    setup(mod, src, generated);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &lib_sources, .flags = flags });
     if (msvc) {
         // MSVC has no pthreads, so upstream ships a wrapper over Win32 threads. It needs
         // std::shared_mutex, and clang defaults to C++14 for msvc targets.
-        c.addObjectsTo(mod, "kvazaar_threadwrapper", .{
+        c.addSources(mod, "kvazaar_threadwrapper", .{
             .module = .{ .cpp = true },
-            .root = src.path(""),
+            .setup = setup,
             .groups = &.{.{
+                .root = src.path(""),
                 .files = &.{ "src/threadwrapper/src/pthread.cpp", "src/threadwrapper/src/semaphore.cpp" },
                 .flags = std.mem.concat(c.b.allocator, []const u8, &.{ flags, &.{"-std=c++17"} }) catch @panic("OOM"),
             }},
-        }, setup, .{ src, generated });
+        });
     }
     if (x86) {
-        c.addObjectsTo(mod, "kvazaar_sse41", .{
+        c.addSources(mod, "kvazaar_sse41", .{
             .module = .{ .x86_features = &.{.sse4_1} },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &sse41_sources, .flags = flags }},
-        }, setup, .{ src, generated });
-        c.addObjectsTo(mod, "kvazaar_avx2", .{
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &sse41_sources, .flags = flags }},
+        });
+        c.addSources(mod, "kvazaar_avx2", .{
             .module = .{ .x86_features = &.{ .avx2, .bmi, .bmi2, .lzcnt, .popcnt } },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &avx2_sources, .flags = flags }},
-        }, setup, .{ src, generated });
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &avx2_sources, .flags = flags }},
+        });
     } else {
         // The strategy registries call the ISA registration functions unconditionally; off x86 these files compile to stubs.
         mod.addCSourceFiles(.{ .root = src.path(""), .files = &(sse41_sources ++ avx2_sources), .flags = flags });

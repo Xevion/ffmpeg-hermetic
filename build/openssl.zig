@@ -38,8 +38,9 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
 
     const crypto = module(c, src, gen, l.crypto);
     // libcrypto.a also holds the default provider, which upstream builds as separate archives.
-    crypto.addObject(c.b.addObject(.{ .name = "default", .root_module = module(c, src, gen, l.default) }));
-    crypto.addObject(c.b.addObject(.{ .name = "common", .root_module = module(c, src, gen, l.common) }));
+    for ([_]struct { []const u8, Group }{ .{ "default", l.default }, .{ "common", l.common } }) |part| {
+        c.addSources(crypto, part[0], .{ .setup = setup(c, src, gen, part[1]), .groups = groups(c, src, gen, part[1]) });
+    }
     const crypto_lib = c.staticLibrary("crypto", crypto);
 
     const ssl_lib = c.staticLibrary("ssl", module(c, src, gen, l.ssl));
@@ -67,18 +68,30 @@ fn flagsFor(c: Ctx, g: Group) []const []const u8 {
     return flags.items;
 }
 
-/// One compile group: its include directories exist both in the OpenSSL tree and in gen, where
-/// the generated headers live.
+/// A group's include directories exist both in the OpenSSL tree and in gen, where the generated
+/// headers live.
+fn setup(c: Ctx, src: *std.Build.Dependency, gen: std.Build.LazyPath, g: Group) Ctx.Setup {
+    const includes = c.b.allocator.alloc(std.Build.LazyPath, g.includes.len * 2) catch @panic("OOM");
+    for (g.includes, 0..) |dir, i| {
+        const dot = std.mem.eql(u8, dir, ".");
+        includes[2 * i] = if (dot) gen else gen.path(c.b, dir);
+        includes[2 * i + 1] = if (dot) src.path("") else src.path(dir);
+    }
+    return .{ .includes = includes };
+}
+
+fn groups(c: Ctx, src: *std.Build.Dependency, gen: std.Build.LazyPath, g: Group) []const Ctx.SourceGroup {
+    const flags = flagsFor(c, g);
+    return c.b.allocator.dupe(Ctx.SourceGroup, &.{
+        .{ .root = src.path(""), .files = g.c, .flags = flags },
+        .{ .root = gen, .files = g.gen_c, .flags = flags },
+        .{ .root = gen, .files = g.asm_files, .flags = flags },
+    }) catch @panic("OOM");
+}
+
 fn module(c: Ctx, src: *std.Build.Dependency, gen: std.Build.LazyPath, g: Group) *std.Build.Module {
     const m = c.module(.{});
-    for (g.includes) |dir| {
-        const dot = std.mem.eql(u8, dir, ".");
-        m.addIncludePath(if (dot) gen else gen.path(c.b, dir));
-        m.addIncludePath(if (dot) src.path("") else src.path(dir));
-    }
-    const flags = flagsFor(c, g);
-    m.addCSourceFiles(.{ .root = src.path(""), .files = g.c, .flags = flags });
-    m.addCSourceFiles(.{ .root = gen, .files = g.gen_c, .flags = flags });
-    m.addCSourceFiles(.{ .root = gen, .files = g.asm_files, .flags = flags });
+    setup(c, src, gen, g).apply(m);
+    Ctx.addGroups(m, groups(c, src, gen, g));
     return m;
 }

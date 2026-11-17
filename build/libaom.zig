@@ -46,13 +46,13 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     flags.appendSlice(b.allocator, &.{ "-DNDEBUG", "-std=c99", "-D_FILE_OFFSET_BITS=64", "-D_LARGEFILE_SOURCE" }) catch @panic("OOM");
     if (windows) flags.appendSlice(b.allocator, &.{ "-D_WIN32_WINNT=0x0601", "-D_CRT_SECURE_NO_WARNINGS" }) catch @panic("OOM");
 
+    const setup: Ctx.Setup = .{ .includes = &.{ generated.getDirectory(), src.path("") } };
     const mod = c.module(.{});
-    mod.addIncludePath(generated.getDirectory());
-    mod.addIncludePath(src.path(""));
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &common, .flags = flags.items });
     mod.addCSourceFiles(.{ .root = generated.getDirectory(), .files = &.{"config/aom_config.c"}, .flags = flags.items });
 
-    const isa: Isa = .{ .c = c, .into = mod, .src = src, .generated = generated, .flags = flags.items };
+    const isa: Isa = .{ .c = c, .into = mod, .src = src, .setup = setup, .flags = flags.items };
 
     if (x86 or x86_64) {
         const X86 = struct { name: []const u8, features: []const std.Target.x86.Feature, files: []const []const u8 };
@@ -107,23 +107,18 @@ const Isa = struct {
     c: Ctx,
     into: *std.Build.Module,
     src: *std.Build.Dependency,
-    generated: *std.Build.Step.WriteFile,
+    setup: Ctx.Setup,
     flags: []const []const u8,
 
     fn add(isa: Isa, name: []const u8, features: Features, files: []const []const u8) void {
-        isa.c.addObjectsTo(isa.into, isa.c.b.fmt("aom_{s}", .{name}), .{
+        isa.c.addSources(isa.into, isa.c.b.fmt("aom_{s}", .{name}), .{
             .module = switch (features) {
                 .x86 => |f| .{ .x86_features = f },
                 .arm => |f| .{ .aarch64_features = f },
             },
-            .root = isa.src.path(""),
-            .groups = &.{.{ .files = files, .flags = isa.flags }},
-        }, setup, .{ isa.generated, isa.src });
-    }
-
-    fn setup(m: *std.Build.Module, generated: *std.Build.Step.WriteFile, src: *std.Build.Dependency) void {
-        m.addIncludePath(generated.getDirectory());
-        m.addIncludePath(src.path(""));
+            .setup = isa.setup,
+            .groups = &.{.{ .root = isa.src.path(""), .files = files, .flags = isa.flags }},
+        });
     }
 };
 

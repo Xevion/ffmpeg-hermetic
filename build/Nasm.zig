@@ -26,6 +26,8 @@ pub const Options = struct {
     flags: []const []const u8 = &.{},
     /// Files nasm reads before each source (`-P`), such as a generated config.asm.
     preincludes: []const std.Build.LazyPath = &.{},
+    /// Prepended to every object name, so two sets of the same sources never share a member name.
+    object_prefix: []const u8 = "",
 };
 
 /// Assembles every file and adds the objects to `into`.
@@ -40,14 +42,14 @@ pub fn addFiles(n: Nasm, c: Ctx, into: *std.Build.Module, opts: Options) void {
         _ = run.addDepFileOutputArg2("obj.d", .{});
         run.addFileArg2(opts.root.path(c.b, file), .{});
         run.addArg("-o");
-        const obj = run.addOutputFileArg2(objName(c.b, file), .{});
+        const obj = run.addOutputFileArg2(objName(c.b, opts.object_prefix, file), .{});
         into.addObjectFile(obj);
     }
 }
 
 /// Archive members are named after the whole source path, so equal stems in two directories differ.
-fn objName(b: *std.Build, file: []const u8) []const u8 {
-    const name = b.fmt("{s}.o", .{file[0 .. file.len - std.fs.path.extension(file).len]});
+fn objName(b: *std.Build, prefix: []const u8, file: []const u8) []const u8 {
+    const name = b.fmt("{s}{s}.o", .{ prefix, file[0 .. file.len - std.fs.path.extension(file).len] });
     std.mem.replaceScalar(u8, name, '/', '_');
     return name;
 }

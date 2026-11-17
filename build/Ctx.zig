@@ -2,6 +2,8 @@
 const std = @import("std");
 const Ctx = @This();
 
+const LazyPath = std.Build.LazyPath;
+
 b: *std.Build,
 target: std.Build.ResolvedTarget,
 optimize: std.builtin.Optimize,
@@ -13,6 +15,8 @@ strip: ?bool = null,
 built: *Built,
 /// Directory of an xwin splat (MSVC CRT plus Windows SDK), for msvc targets off Windows.
 winsdk: ?[]const u8 = null,
+/// Libc description set on every compile step this Ctx creates; only msvc targets with `winsdk` have one.
+libc_file: ?LazyPath = null,
 
 pub const Built = std.StringHashMapUnmanaged([]const *std.Build.Step.Compile);
 
@@ -89,8 +93,9 @@ fn winsdkArch(arch_tag: std.Target.Cpu.Arch) []const u8 {
 }
 
 /// A libc description pointing at the xwin splat, for msvc targets when `winsdk` is set. Native
-/// Windows hosts leave `winsdk` unset and zig finds the installed MSVC and SDK itself.
-fn winsdkLibcFile(c: Ctx) ?std.Build.LazyPath {
+/// Windows hosts leave `winsdk` unset and zig finds the installed MSVC and SDK itself. Computed
+/// once and stored in `libc_file` before any library is declared.
+pub fn winsdkLibcFile(c: Ctx) ?LazyPath {
     if (!c.isMsvc()) return null;
     const sdk = c.winsdk orelse {
         if (c.b.graph.host.result.os.tag != .windows) std.process.fatal(
@@ -113,75 +118,90 @@ fn winsdkLibcFile(c: Ctx) ?std.Build.LazyPath {
     return c.b.addWriteFiles().add("msvc-libc.txt", text);
 }
 
-/// Gives every msvc-target compile step reachable from the install step the generated libc file.
-/// Run once, after all libraries are declared.
-pub fn applyLibc(c: Ctx) void {
-    const libc = c.winsdkLibcFile() orelse return;
-    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
-    var stack: std.ArrayList(*std.Build.Step) = .empty;
-    stack.append(c.b.allocator, c.b.getInstallStep()) catch @panic("OOM");
-    while (stack.pop()) |step| {
-        if ((seen.getOrPut(c.b.allocator, step) catch @panic("OOM")).found_existing) continue;
-        if (step.cast(std.Build.Step.Compile)) |compile| {
-            if (compile.root_module.resolved_target) |resolved| {
-                const target = resolved.result;
-                if (target.os.tag == .windows and target.abi == .msvc) compile.setLibCFile(libc);
-            }
-            for (compile.getCompileDependencies(false)) |dep_compile| stack.append(c.b.allocator, &dep_compile.step) catch @panic("OOM");
-        }
-        stack.appendSlice(c.b.allocator, step.dependencies.items) catch @panic("OOM");
+fn withLibc(c: Ctx, compile: *std.Build.Step.Compile) *std.Build.Step.Compile {
+    if (c.libc_file) |file| compile.setLibCFile(file);
+    return compile;
+}
+
+/// A static library of `root_module`; every library and object goes through here so it gets `libc_file`.
+pub fn staticLibrary(c: Ctx, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {
+    return c.withLibc(c.b.addLibrary(.{ .name = name, .linkage = .static, .root_module = root_module }));
+}
+
+/// An object file of `root_module`, for linking into another module.
+pub fn object(c: Ctx, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {
+    return c.withLibc(c.b.addObject(.{ .name = name, .root_module = root_module }));
+}
+
+/// `dirs` under `root` as include paths; an empty name is `root` itself.
+pub fn includeDirs(c: Ctx, root: LazyPath, dirs: []const []const u8) []const LazyPath {
+    const out = c.b.allocator.alloc(LazyPath, dirs.len) catch @panic("OOM");
+    for (out, dirs) |*path, dir| path.* = if (dir.len == 0) root else root.path(c.b, dir);
+    return out;
+}
+
+/// What a module needs to find its headers.
+pub const Setup = struct {
+    includes: []const LazyPath = &.{},
+    config_headers: []const *std.Build.Step.ConfigHeader = &.{},
+
+    pub fn apply(s: Setup, m: *std.Build.Module) void {
+        for (s.config_headers) |header| m.addConfigHeader(header);
+        for (s.includes) |dir| m.addIncludePath(dir);
     }
-}
 
-/// Compiles `m` to one object of `into`. Multi-file modules need `addObjectsTo` off ELF.
-pub fn addObjectTo(c: Ctx, into: *std.Build.Module, name: []const u8, m: *std.Build.Module) void {
-    into.addObject(c.b.addObject(.{ .name = name, .root_module = m }));
-}
+    fn isEmpty(s: Setup) bool {
+        return s.includes.len == 0 and s.config_headers.len == 0;
+    }
+};
 
-/// Source files that share one set of compiler flags.
+/// Source files that share one root and one set of compiler flags.
 pub const SourceGroup = struct {
+    root: LazyPath,
     files: []const []const u8,
     flags: []const []const u8 = &.{},
 };
 
-pub const ObjectOptions = struct {
+/// Adds every group's files to `m` as C sources of that module.
+pub fn addGroups(m: *std.Build.Module, groups: []const SourceGroup) void {
+    for (groups) |g| m.addCSourceFiles(.{ .root = g.root, .files = g.files, .flags = g.flags });
+}
+
+pub const SourceOptions = struct {
     /// CPU features and language for the module the sources compile in.
     module: ModuleOptions = .{},
-    root: std.Build.LazyPath,
+    /// Headers the sources need beyond what `into` already has.
+    setup: Setup = .{},
     groups: []const SourceGroup,
 };
 
-/// Compiles sources into objects of `into`: on ELF one object named `name` holding every file,
-/// elsewhere one object per file. COFF cannot merge compiled files into one object, and Mach-O
-/// merging turns hidden-visibility symbols local, so code in one merged object could not be
-/// called from another. `setup` is called as `setup(module, ...setup_args)` on each module to
-/// add include paths and headers.
-pub fn addObjectsTo(
-    c: Ctx,
-    into: *std.Build.Module,
-    name: []const u8,
-    opts: ObjectOptions,
-    comptime setup: anytype,
-    setup_args: anytype,
-) void {
+/// Compiles sources into `into`. Sources that need the parent's own module (no extra CPU features,
+/// same language, no extra headers) are added to it directly. Otherwise they compile in a module
+/// of their own: on ELF one object named `name` holding every file, elsewhere one object per
+/// file. COFF cannot merge compiled files into one object, and Mach-O merging turns
+/// hidden-visibility symbols local, so code in one merged object could not be called from another.
+pub fn addSources(c: Ctx, into: *std.Build.Module, name: []const u8, o: SourceOptions) void {
+    if (c.sharesModule(into, o)) return addGroups(into, o.groups);
     if (c.target.result.ofmt == .elf) {
-        const m = c.module(opts.module);
-        @call(.auto, setup, .{m} ++ setup_args);
-        for (opts.groups) |g| m.addCSourceFiles(.{ .root = opts.root, .files = g.files, .flags = g.flags });
-        into.addObject(c.b.addObject(.{ .name = name, .root_module = m }));
+        const m = c.module(o.module);
+        o.setup.apply(m);
+        addGroups(m, o.groups);
+        into.addObject(c.object(name, m));
         return;
     }
-    for (opts.groups) |g| for (g.files) |file| {
-        const m = c.module(opts.module);
-        @call(.auto, setup, .{m} ++ setup_args);
-        m.addCSourceFiles(.{ .root = opts.root, .files = &.{file}, .flags = g.flags });
+    for (o.groups) |g| for (g.files) |file| {
+        const m = c.module(o.module);
+        o.setup.apply(m);
+        m.addCSourceFiles(.{ .root = g.root, .files = &.{file}, .flags = g.flags });
         const stem = file[0 .. file.len - std.fs.path.extension(file).len];
         const object_name = c.b.fmt("{s}_{s}", .{ name, stem });
         std.mem.replaceScalar(u8, object_name, '/', '_');
-        into.addObject(c.b.addObject(.{ .name = object_name, .root_module = m }));
+        into.addObject(c.object(object_name, m));
     };
 }
 
-pub fn staticLibrary(c: Ctx, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {
-    return c.b.addLibrary(.{ .name = name, .linkage = .static, .root_module = root_module });
+fn sharesModule(c: Ctx, into: *std.Build.Module, o: SourceOptions) bool {
+    if (o.module.x86_features.len > 0 or o.module.aarch64_features.len > 0 or !o.setup.isEmpty()) return false;
+    // msvc modules never link libc++, so the language makes no difference there.
+    return c.isMsvc() or o.module.cpp == (into.link_libcpp orelse false);
 }

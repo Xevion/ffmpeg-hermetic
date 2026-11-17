@@ -102,16 +102,16 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     if (linux) flags.append(b.allocator, "-D_GNU_SOURCE") catch @panic("OOM");
     if (aarch64) flags.append(b.allocator, "-fno-align-functions") catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader, gen: *std.Build.Step.WriteFile) void {
-            m.addConfigHeader(cfg);
-            m.addIncludePath(gen.getDirectory());
-            for ([_][]const u8{ "", "include", "include/dav1d", "src" }) |dir| m.addIncludePath(s.path(dir));
-        }
-    }.f;
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{config},
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+            &.{generated.getDirectory()},
+            c.includeDirs(src.path(""), &.{ "", "include", "include/dav1d", "src" }),
+        }) catch @panic("OOM"),
+    };
 
     const mod = c.module(.{});
-    setup(mod, src, config, generated);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &common, .flags = flags.items });
     if (x86) mod.addCSourceFiles(.{ .root = src.path(""), .files = &.{"src/x86/cpu.c"}, .flags = flags.items });
     if (arm_asm) {
@@ -123,13 +123,14 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     if (windows) mod.addCSourceFiles(.{ .root = src.path(""), .files = &.{"src/win32/thread.c"}, .flags = flags.items });
 
     for ([_][]const u8{ "8", "16" }) |depth| {
-        c.addObjectsTo(mod, b.fmt("dav1d_bitdepth_{s}", .{depth}), .{
-            .root = src.path(""),
+        c.addSources(mod, b.fmt("dav1d_bitdepth_{s}", .{depth}), .{
+            .setup = setup,
             .groups = &.{.{
+                .root = src.path(""),
                 .files = &bitdepth,
                 .flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{b.fmt("-DBITDEPTH={s}", .{depth})} }) catch @panic("OOM"),
             }},
-        }, setup, .{ src, config, generated });
+        });
     }
 
     if (x86) {

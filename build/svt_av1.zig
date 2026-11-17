@@ -40,32 +40,30 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     }) catch @panic("OOM");
     if (windows) flags.append(b.allocator, "-D_WIN32_WINNT=0x0601") catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, gen: *std.Build.Step.WriteFile) void {
-            m.addIncludePath(gen.getDirectory());
-            for ([_][]const u8{
-                "",
-                "Source/API",
-                "Source/Lib/Globals",
-                "Source/Lib/Codec",
-                "Source/Lib/C_DEFAULT",
-                "Source/Lib/ASM_SSE2",
-                "Source/Lib/ASM_SSSE3",
-                "Source/Lib/ASM_SSE4_1",
-                "Source/Lib/ASM_AVX2",
-                "Source/Lib/ASM_AVX512",
-                "Source/Lib/ASM_NEON",
-                "Source/Lib/ASM_NEON_DOTPROD",
-                "Source/Lib/ASM_NEON_I8MM",
-                "Source/Lib/ASM_SVE",
-                "Source/Lib/ASM_SVE2",
-                "third_party/fastfeat",
-            }) |dir| m.addIncludePath(s.path(dir));
-        }
-    }.f;
+    const setup: Ctx.Setup = .{ .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+        &.{generated.getDirectory()},
+        c.includeDirs(src.path(""), &.{
+            "",
+            "Source/API",
+            "Source/Lib/Globals",
+            "Source/Lib/Codec",
+            "Source/Lib/C_DEFAULT",
+            "Source/Lib/ASM_SSE2",
+            "Source/Lib/ASM_SSSE3",
+            "Source/Lib/ASM_SSE4_1",
+            "Source/Lib/ASM_AVX2",
+            "Source/Lib/ASM_AVX512",
+            "Source/Lib/ASM_NEON",
+            "Source/Lib/ASM_NEON_DOTPROD",
+            "Source/Lib/ASM_NEON_I8MM",
+            "Source/Lib/ASM_SVE",
+            "Source/Lib/ASM_SVE2",
+            "third_party/fastfeat",
+        }),
+    }) catch @panic("OOM") };
 
     const mod = c.module(.{});
-    setup(mod, src, generated);
+    setup.apply(mod);
     for ([_][]const []const u8{ &base, &globals, &c_default, &fastfeat }) |files| {
         mod.addCSourceFiles(.{ .root = src.path(""), .files = files, .flags = flags.items });
     }
@@ -81,11 +79,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "svt_av1_avx512", .features = &.{ .avx2, .avx512f, .avx512bw, .avx512dq, .avx512vl }, .files = &asm_avx512 },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .x86_features = isa.features },
-                .root = src.path(""),
-                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
-            }, setup, .{ src, generated });
+                .setup = setup,
+                .groups = &.{.{ .root = src.path(""), .files = isa.files, .flags = flags.items }},
+            });
         }
 
         nasm.addFiles(c, mod, .{
@@ -117,11 +115,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "svt_av1_sve2", .features = &.{ .v9a, .i8mm, .sve2 }, .files = &aarch64_sve2 },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .aarch64_features = isa.features },
-                .root = src.path(""),
-                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
-            }, setup, .{ src, generated });
+                .setup = setup,
+                .groups = &.{.{ .root = src.path(""), .files = isa.files, .flags = flags.items }},
+            });
         }
     }
 

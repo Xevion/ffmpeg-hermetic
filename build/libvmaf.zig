@@ -45,29 +45,25 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
     const c_flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{"-std=c11"} }) catch @panic("OOM");
     const cpp_flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, &.{ "-std=c++11", "-U_LIBCPP_ENABLE_ASSERTIONS" } }) catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader, gen: *std.Build.Step.WriteFile, v: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(cfg);
-            m.addConfigHeader(v);
-            m.addIncludePath(gen.getDirectory());
-            const root = s.path("libvmaf");
-            for ([_][]const u8{ "src", "src/feature", "src/feature/common", "src/feature/cuda", "include", "include/libvmaf" }) |dir| {
-                m.addIncludePath(root.path(s.builder, dir));
-            }
-        }
-    }.f;
-    const args = .{ src, config, generated, version };
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{ config, version },
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+            &.{generated.getDirectory()},
+            c.includeDirs(src.path("libvmaf"), &.{ "src", "src/feature", "src/feature/common", "src/feature/cuda", "include", "include/libvmaf" }),
+        }) catch @panic("OOM"),
+    };
     const root = src.path("libvmaf/src");
 
     const mod = c.module(.{});
-    @call(.auto, setup, .{mod} ++ args);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = root, .files = &(core ++ feature ++ feature_float), .flags = c_flags });
     mod.addCSourceFiles(.{ .root = root, .files = &.{"cpu.c"}, .flags = c_flags });
 
-    const svm = c.module(.{ .cpp = true });
-    @call(.auto, setup, .{svm} ++ args);
-    svm.addCSourceFiles(.{ .root = root, .files = &.{"svm.cpp"}, .flags = cpp_flags });
-    c.addObjectTo(mod, "vmaf_svm", svm);
+    c.addSources(mod, "vmaf_svm", .{
+        .module = .{ .cpp = true },
+        .setup = setup,
+        .groups = &.{.{ .root = root, .files = &.{"svm.cpp"}, .flags = cpp_flags }},
+    });
 
     if (x86) {
         mod.addCSourceFiles(.{ .root = root, .files = &.{"x86/cpu.c"}, .flags = c_flags });
@@ -81,11 +77,11 @@ pub fn build(c: Ctx, nasm: Nasm) *std.Build.Step.Compile {
             .{ .name = "vmaf_avx512", .features = &.{ .avx512f, .avx512dq, .avx512bw, .avx512cd, .avx512vl }, .files = &avx512 },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .x86_features = isa.features },
-                .root = root,
-                .groups = &.{.{ .files = isa.files, .flags = c_flags }},
-            }, setup, args);
+                .setup = setup,
+                .groups = &.{.{ .root = root, .files = isa.files, .flags = c_flags }},
+            });
         }
     }
     if (arm) {

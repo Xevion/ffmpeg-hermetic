@@ -16,17 +16,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     if (!c.isWindows()) flags.append(c.b.allocator, "-DMFX_MODULES_DIR=\"" ++ modules_dir ++ "\"") catch @panic("OOM");
 
     const files = if (c.isWindows()) &(common ++ windows) else &(common ++ linux);
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency) void {
-            m.addIncludePath(s.path("libvpl"));
-            m.addIncludePath(s.path("api"));
-        }
-    }.f;
-    c.addObjectsTo(mod, "vpl", .{
+    c.addSources(mod, "vpl", .{
         .module = .{ .cpp = true },
-        .root = src.path("libvpl"),
-        .groups = &.{.{ .files = files, .flags = flags.items }},
-    }, setup, .{src});
+        .setup = .{ .includes = &.{ src.path("libvpl"), src.path("api") } },
+        .groups = &.{.{ .root = src.path("libvpl"), .files = files, .flags = flags.items }},
+    });
 
     const lib = c.staticLibrary("vpl", mod);
     lib.installHeadersDirectory(src.path("api/vpl"), "vpl", .{});

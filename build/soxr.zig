@@ -31,23 +31,18 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         .WITH_DEV_TRACE = true,
     });
     const flags: []const []const u8 = &.{ "-DSOXR_LIB", "-std=gnu89" };
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(cfg);
-            m.addIncludePath(s.path("src"));
-        }
-    }.f;
+    const setup: Ctx.Setup = .{ .config_headers = &.{config}, .includes = &.{src.path("src")} };
 
     const mod = c.module(.{});
-    setup(mod, src, config);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path("src"), .files = &common, .flags = flags });
     if (x86) {
         mod.addCSourceFiles(.{ .root = src.path("src"), .files = &simd32, .flags = flags });
-        c.addObjectsTo(mod, "soxr_avx", .{
+        c.addSources(mod, "soxr_avx", .{
             .module = .{ .x86_features = &.{.avx} },
-            .root = src.path("src"),
-            .groups = &.{.{ .files = &simd64, .flags = flags }},
-        }, setup, .{ src, config });
+            .setup = setup,
+            .groups = &.{.{ .root = src.path("src"), .files = &simd64, .flags = flags }},
+        });
     }
 
     const lib = c.staticLibrary("soxr", mod);

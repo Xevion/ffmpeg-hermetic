@@ -30,24 +30,19 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         "-DTARGET_SIMD_ARM_SVE2=1", "-fno-lax-vector-conversions",
     }) catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, v: *std.Build.Step.ConfigHeader, a: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(v);
-            m.addConfigHeader(a);
-            m.addIncludePath(s.path("include"));
-            m.addIncludePath(s.path("source/Lib"));
-            for ([_][]const u8{ "vvdec", "DecoderLib", "CommonLib", "CommonLib/x86", "CommonLib/arm", "libmd5" }) |d| {
-                m.addIncludePath(s.path("source/Lib").path(s.builder, d));
-            }
-            m.addIncludePath(s.path("thirdparty"));
-        }
-    }.f;
-    const args = .{ src, version, api };
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{ version, api },
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+            &.{ src.path("include"), src.path("source/Lib") },
+            c.includeDirs(src.path("source/Lib"), &.{ "vvdec", "DecoderLib", "CommonLib", "CommonLib/x86", "CommonLib/arm", "libmd5" }),
+            &.{src.path("thirdparty")},
+        }) catch @panic("OOM"),
+    };
     const root = src.path("source/Lib");
 
     const baseline: []const std.Target.x86.Feature = if (x86) &.{.sse4_1} else &.{};
     const mod = c.module(.{ .cpp = true, .x86_features = baseline });
-    @call(.auto, setup, .{mod} ++ args);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = root, .files = &common, .flags = flags.items });
 
     if (x86) {
@@ -57,11 +52,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
             .{ .name = "vvdec_avx2", .define = "-DUSE_AVX2", .features = &.{ .sse4_1, .avx2 }, .files = &x86_avx2 },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .cpp = true, .x86_features = isa.features },
-                .root = root,
-                .groups = &.{.{ .files = isa.files, .flags = withDefine(b, flags.items, isa.define) }},
-            }, setup, args);
+                .setup = setup,
+                .groups = &.{.{ .root = root, .files = isa.files, .flags = withDefine(b, flags.items, isa.define) }},
+            });
         }
     } else {
         mod.addCSourceFiles(.{ .root = root, .files = &x86_sse41, .flags = withDefine(b, flags.items, "-DUSE_SSE41") });
@@ -76,11 +71,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
             .{ .name = "vvdec_sve2", .features = &.{ .v9a, .sve2 }, .defines = &.{ "-DUSE_NEON", "-DUSE_SVE", "-DUSE_SVE2" }, .files = &arm_sve2 },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .cpp = true, .aarch64_features = isa.features },
-                .root = root,
-                .groups = &.{.{ .files = isa.files, .flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, isa.defines }) catch @panic("OOM") }},
-            }, setup, args);
+                .setup = setup,
+                .groups = &.{.{ .root = root, .files = isa.files, .flags = std.mem.concat(b.allocator, []const u8, &.{ flags.items, isa.defines }) catch @panic("OOM") }},
+            });
         }
     }
 

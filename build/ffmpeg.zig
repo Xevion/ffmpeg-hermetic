@@ -100,10 +100,17 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const *std.Build.Step.Compile, o: Optio
                 Setup.apply(mod, setup);
                 mod.addCSourceFiles(.{ .root = src.path(""), .files = group.files, .flags = flags.items });
             } else {
-                c.addObjectsTo(mod, b.fmt("{s}_group{d}", .{ lib.name, i }), .{
-                    .root = src.path(""),
-                    .groups = &.{.{ .files = group.files, .flags = flags.items }},
-                }, Setup.apply, .{setup});
+                c.addSources(mod, b.fmt("{s}_group{d}", .{ lib.name, i }), .{
+                    .setup = .{
+                        .config_headers = &.{ headers.config_h, headers.avconfig_h },
+                        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+                            &.{ gen, src.path("") },
+                            c.includeDirs(src.path(""), group.includes),
+                            dep_includes.items,
+                        }) catch @panic("OOM"),
+                    },
+                    .groups = &.{.{ .root = src.path(""), .files = group.files, .flags = flags.items }},
+                });
             }
             for (group.files) |f| manifest.append(b.allocator, b.fmt("{s} c {s} {s}", .{ lib.name, joinOrDash(b, group.includes), f })) catch @panic("OOM");
         }

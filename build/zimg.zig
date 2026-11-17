@@ -14,14 +14,10 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     if (x86) flags.appendSlice(c.b.allocator, &.{ "-DZIMG_X86", "-DZIMG_X86_AVX512" }) catch @panic("OOM");
     if (arm) flags.append(c.b.allocator, "-DZIMG_ARM") catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency) void {
-            m.addIncludePath(s.path("src/zimg"));
-        }
-    }.f;
+    const setup: Ctx.Setup = .{ .includes = &.{src.path("src/zimg")} };
 
     const mod = c.module(.{ .cpp = true });
-    setup(mod, src);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path("src/zimg"), .files = &common, .flags = flags.items });
     if (x86) {
         mod.addCSourceFiles(.{ .root = src.path("src/zimg"), .files = &(x86_base ++ sse ++ sse2), .flags = flags.items });
@@ -33,11 +29,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
             .{ .name = "avx512_vnni", .features = &.{ .avx512f, .avx512cd, .avx512vl, .avx512bw, .avx512dq, .avx512vnni }, .files = &avx512_vnni },
         };
         for (isas) |isa| {
-            c.addObjectsTo(mod, c.b.fmt("zimg_{s}", .{isa.name}), .{
+            c.addSources(mod, c.b.fmt("zimg_{s}", .{isa.name}), .{
                 .module = .{ .cpp = true, .x86_features = isa.features },
-                .root = src.path("src/zimg"),
-                .groups = &.{.{ .files = isa.files, .flags = flags.items }},
-            }, setup, .{src});
+                .setup = setup,
+                .groups = &.{.{ .root = src.path("src/zimg"), .files = isa.files, .flags = flags.items }},
+            });
         }
     }
     if (arm) mod.addCSourceFiles(.{ .root = src.path("src/zimg"), .files = &(arm_files ++ neon), .flags = flags.items });

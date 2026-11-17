@@ -33,29 +33,23 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     });
     const flags: []const []const u8 = &.{ "-DHAVE_CONFIG_H", "-DNDEBUG", "-fvisibility=hidden" };
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(cfg);
-            m.addIncludePath(s.path(""));
-            m.addIncludePath(s.path("src"));
-        }
-    }.f;
+    const setup: Ctx.Setup = .{ .config_headers = &.{config}, .includes = &.{ src.path(""), src.path("src") } };
 
     const webp_mod = c.module(.{});
-    setup(webp_mod, src, config);
+    setup.apply(webp_mod);
     webp_mod.addCSourceFiles(.{ .root = src.path(""), .files = &(dec ++ dsp_common ++ dsp_enc ++ utils ++ enc), .flags = flags });
     if (x86) {
         webp_mod.addCSourceFiles(.{ .root = src.path(""), .files = &x86_sse2, .flags = flags });
-        c.addObjectsTo(webp_mod, "webp_sse41", .{
+        c.addSources(webp_mod, "webp_sse41", .{
             .module = .{ .x86_features = &.{.sse4_1} },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &x86_sse41, .flags = flags }},
-        }, setup, .{ src, config });
-        c.addObjectsTo(webp_mod, "webp_avx2", .{
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &x86_sse41, .flags = flags }},
+        });
+        c.addSources(webp_mod, "webp_avx2", .{
             .module = .{ .x86_features = &.{ .avx, .avx2 } },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &x86_avx2, .flags = flags }},
-        }, setup, .{ src, config });
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &x86_avx2, .flags = flags }},
+        });
     }
     if (arm) webp_mod.addCSourceFiles(.{ .root = src.path(""), .files = &neon, .flags = flags });
     const webp = c.staticLibrary("webp", webp_mod);
@@ -64,7 +58,7 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     }
 
     const sharpyuv_mod = c.module(.{});
-    setup(sharpyuv_mod, src, config);
+    setup.apply(sharpyuv_mod);
     sharpyuv_mod.addCSourceFiles(.{ .root = src.path("sharpyuv"), .files = &sharpyuv, .flags = flags });
     if (x86) sharpyuv_mod.addCSourceFiles(.{ .root = src.path("sharpyuv"), .files = &.{"sharpyuv_sse2.c"}, .flags = flags });
     if (arm) sharpyuv_mod.addCSourceFiles(.{ .root = src.path("sharpyuv"), .files = &.{"sharpyuv_neon.c"}, .flags = flags });
@@ -74,7 +68,7 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     }
 
     const mux_mod = c.module(.{});
-    setup(mux_mod, src, config);
+    setup.apply(mux_mod);
     mux_mod.addCSourceFiles(.{ .root = src.path("src/mux"), .files = &mux, .flags = flags });
     const mux_lib = c.staticLibrary("webpmux", mux_mod);
     for ([_][]const u8{ "mux.h", "mux_types.h", "types.h" }) |h| {
@@ -82,7 +76,7 @@ pub fn build(c: Ctx, _: Nasm) []const *std.Build.Step.Compile {
     }
 
     const demux_mod = c.module(.{});
-    setup(demux_mod, src, config);
+    setup.apply(demux_mod);
     demux_mod.addCSourceFiles(.{ .root = src.path("src/demux"), .files = &demux, .flags = flags });
     const demux_lib = c.staticLibrary("webpdemux", demux_mod);
     for ([_][]const u8{ "demux.h", "mux_types.h", "decode.h", "types.h" }) |h| {

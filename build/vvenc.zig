@@ -27,24 +27,18 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     flags.append(b.allocator, if (c.isWindows()) "-D_WIN32_WINNT=0x0600" else "-DHAVE_PTHREADS") catch @panic("OOM");
     if (arm) flags.appendSlice(b.allocator, &.{ "-DTARGET_SIMD_ARM=1", "-DTARGET_SIMD_ARM_SVE=1", "-fno-lax-vector-conversions" }) catch @panic("OOM");
 
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, v: *std.Build.Step.ConfigHeader, a: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(v);
-            m.addConfigHeader(a);
-            m.addIncludePath(s.path("include"));
-            m.addIncludePath(s.path("source/Lib"));
-            for ([_][]const u8{ "vvenc", "DecoderLib", "EncoderLib", "CommonLib", "CommonLib/x86", "CommonLib/arm", "apputils" }) |d| {
-                m.addIncludePath(s.path("source/Lib").path(s.builder, d));
-            }
-            m.addIncludePath(s.path("thirdparty"));
-            m.addIncludePath(s.path("thirdparty/nlohmann_json/single_include"));
-        }
-    }.f;
-    const args = .{ src, version, api };
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{ version, api },
+        .includes = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
+            &.{ src.path("include"), src.path("source/Lib") },
+            c.includeDirs(src.path("source/Lib"), &.{ "vvenc", "DecoderLib", "EncoderLib", "CommonLib", "CommonLib/x86", "CommonLib/arm", "apputils" }),
+            &.{ src.path("thirdparty"), src.path("thirdparty/nlohmann_json/single_include") },
+        }) catch @panic("OOM"),
+    };
     const root = src.path("source/Lib");
 
     const mod = c.module(.{ .cpp = true });
-    @call(.auto, setup, .{mod} ++ args);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = root, .files = &common, .flags = flags.items });
 
     const isas = [_]struct { name: []const u8, define: ?[]const u8 = null, x86_features: []const std.Target.x86.Feature = &.{}, files: []const []const u8 }{
@@ -56,11 +50,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     };
     if (x86) {
         for (isas) |isa| {
-            c.addObjectsTo(mod, isa.name, .{
+            c.addSources(mod, isa.name, .{
                 .module = .{ .cpp = true, .x86_features = isa.x86_features },
-                .root = root,
-                .groups = &.{.{ .files = isa.files, .flags = withDefine(b, flags.items, isa.define) }},
-            }, setup, args);
+                .setup = setup,
+                .groups = &.{.{ .root = root, .files = isa.files, .flags = withDefine(b, flags.items, isa.define) }},
+            });
         }
     } else {
         mod.addCSourceFiles(.{ .root = root, .files = &common_sse41, .flags = flags.items });
@@ -70,11 +64,11 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
     if (arm) {
         mod.addCSourceFiles(.{ .root = root, .files = &arm_common, .flags = flags.items });
         mod.addCSourceFiles(.{ .root = root, .files = &arm_neon, .flags = withDefine(b, flags.items, "-DUSE_NEON") });
-        c.addObjectsTo(mod, "vvenc_sve", .{
+        c.addSources(mod, "vvenc_sve", .{
             .module = .{ .cpp = true, .aarch64_features = &.{ .v8_2a, .sve } },
-            .root = root,
-            .groups = &.{.{ .files = &arm_sve, .flags = withDefine(b, withDefine(b, flags.items, "-DUSE_NEON"), "-DUSE_SVE") }},
-        }, setup, args);
+            .setup = setup,
+            .groups = &.{.{ .root = root, .files = &arm_sve, .flags = withDefine(b, withDefine(b, flags.items, "-DUSE_NEON"), "-DUSE_SVE") }},
+        });
     }
 
     const lib = c.staticLibrary("vvenc", mod);

@@ -93,7 +93,7 @@ fn buildLibrary(c: Ctx, nasm: Nasm, lib: Library, out: *std.ArrayList(*std.Build
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
-    const c: Ctx = .{
+    var c: Ctx = .{
         .b = b,
         .target = b.standardTargetOptions(.{}),
         .optimize = optimize,
@@ -103,6 +103,7 @@ pub fn build(b: *std.Build) void {
         .winsdk = if (b.option([]const u8, "winsdk", "xwin splat directory (MSVC CRT + Windows SDK) for msvc targets off Windows")) |dir| b.pathResolve(&.{dir}) else null,
     };
     c.built.* = .empty;
+    c.libc_file = c.winsdkLibcFile();
     const only = b.option([]const u8, "only", "Build a single library (zlib, opus, dav1d, ..., ffmpeg)");
     const nasm = Nasm.init(c);
     const with_ffmpeg = if (only) |name| std.mem.eql(u8, name, "ffmpeg") else b.option(bool, "ffmpeg", "Build FFmpeg on top of the libraries (default: true)") orelse true;
@@ -124,5 +125,4 @@ pub fn build(b: *std.Build) void {
         for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
         bundle.add(c, deps.items, ffmpeg_libs);
     }
-    c.applyLibc();
 }

@@ -32,29 +32,25 @@ pub fn build(c: Ctx, _: Nasm) *std.Build.Step.Compile {
         .PACKAGE_VERSION = "1.6.1",
     });
     const base = [_][]const u8{ "-DHAVE_CONFIG_H", "-D_FILE_OFFSET_BITS=64", "-fvisibility=hidden" };
-    const setup = struct {
-        fn f(m: *std.Build.Module, s: *std.Build.Dependency, cfg: *std.Build.Step.ConfigHeader) void {
-            m.addConfigHeader(cfg);
-            for ([_][]const u8{ "", "include", "celt", "silk", "silk/float", "silk/fixed", "dnn", "src" }) |dir| {
-                m.addIncludePath(s.path(dir));
-            }
-        }
-    }.f;
+    const setup: Ctx.Setup = .{
+        .config_headers = &.{config},
+        .includes = c.includeDirs(src.path(""), &.{ "", "include", "celt", "silk", "silk/float", "silk/fixed", "dnn", "src" }),
+    };
 
-    setup(mod, src, config);
+    setup.apply(mod);
     mod.addCSourceFiles(.{ .root = src.path(""), .files = &(silk ++ silk_float ++ celt ++ opus), .flags = &base });
     if (x86) {
         mod.addCSourceFiles(.{ .root = src.path(""), .files = &x86_base, .flags = &base });
-        c.addObjectsTo(mod, "opus_sse4_1", .{
+        c.addSources(mod, "opus_sse4_1", .{
             .module = .{ .x86_features = &.{.sse4_1} },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &x86_sse4_1, .flags = &base }},
-        }, setup, .{ src, config });
-        c.addObjectsTo(mod, "opus_avx2", .{
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &x86_sse4_1, .flags = &base }},
+        });
+        c.addSources(mod, "opus_avx2", .{
             .module = .{ .x86_features = &.{ .avx, .avx2, .fma } },
-            .root = src.path(""),
-            .groups = &.{.{ .files = &x86_avx2, .flags = &base }},
-        }, setup, .{ src, config });
+            .setup = setup,
+            .groups = &.{.{ .root = src.path(""), .files = &x86_avx2, .flags = &base }},
+        });
     }
 
     if (arm64) mod.addCSourceFiles(.{ .root = src.path(""), .files = &arm64_sources, .flags = &base });
