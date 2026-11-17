@@ -25,7 +25,6 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const windows = c.isWindows();
     const darwin = t.os.tag.isDarwin();
     const msvc = c.isMsvc();
-    const asm_enabled = x86 or arm64;
     // C callers reach the asm through a leading underscore on these ABIs (x86_64 windows has none).
     const prefix = darwin or (windows and t.cpu.arch == .x86);
 
@@ -47,7 +46,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .HAVE_LOG2F = 1,
         .HAVE_STRTOK_R = b10(!msvc),
         .HAVE_CLOCK_GETTIME = b10(!msvc),
-        .HAVE_GETAUXVAL = if (linux and t.abi.isGnu()) @as(?i64, 1) else null,
+        .HAVE_GETAUXVAL = if (linux) @as(?i64, 1) else null,
         .HAVE_SYSCONF = b10(!windows),
         .HAVE_MMAP = if (!windows) @as(?i64, 1) else null,
         .HAVE_THP = if (linux and x86) @as(?i64, 1) else null,
@@ -77,7 +76,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
         .HAVE_WINRT = 0,
         .HAVE_VSX = 0,
         .HAVE_ARM_INLINE_ASM = 0,
-        .HAVE_BITDEPTH10 = 0,
+        .HAVE_BITDEPTH10 = 1,
         .HAVE_ELF_AUX_INFO = 0,
         .HAVE_DOTPROD = b10(arm64),
         .HAVE_I8MM = b10(arm64),
@@ -100,7 +99,7 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     const x264_config = b.addConfigHeader(.{ .include_path = "x264_config.h" }, .{
         .X264_GPL = 1,
         .X264_INTERLACED = 1,
-        .X264_BIT_DEPTH = 8,
+        .X264_BIT_DEPTH = 0,
         .X264_CHROMA_FORMAT = 0,
         .X264_VERSION = "",
         .X264_POINTVER = "0.165.x",
@@ -110,8 +109,6 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     flags.appendSlice(b.allocator, &.{ "-ffast-math", "-fomit-frame-pointer", "-fvisibility=hidden" }) catch @panic("OOM");
     if (!msvc) flags.appendSlice(b.allocator, &.{ "-std=gnu99", "-D_GNU_SOURCE" }) catch @panic("OOM");
     if (x86) flags.append(b.allocator, "-mstack-alignment=64") catch @panic("OOM");
-    const bd_flags = b.allocator.dupe([]const u8, flags.items) catch @panic("OOM");
-    const bd8 = std.mem.concat(b.allocator, []const u8, &.{ bd_flags, &.{ "-DHIGH_BIT_DEPTH=0", "-DBIT_DEPTH=8" } }) catch @panic("OOM");
 
     const mod = c.module(.{});
     mod.addConfigHeader(config);
@@ -119,42 +116,64 @@ pub fn build(c: Ctx, nasm: Nasm) ?Ctx.Output {
     mod.addIncludePath(src.path(""));
 
     var plain: std.ArrayList([]const u8) = .empty;
-    var depth: std.ArrayList([]const u8) = .empty;
     plain.appendSlice(b.allocator, &.{ "common/osdep.c", "common/base.c", "common/cpu.c", "common/tables.c", "encoder/api.c" }) catch @panic("OOM");
-    depth.appendSlice(b.allocator, &common_depth) catch @panic("OOM");
-    depth.append(b.allocator, "common/threadpool.c") catch @panic("OOM");
     if (windows) plain.append(b.allocator, "common/win32thread.c") catch @panic("OOM");
-    if (x86) depth.appendSlice(b.allocator, &.{ "common/x86/mc-c.c", "common/x86/predict-c.c" }) catch @panic("OOM");
-    if (arm64) depth.appendSlice(b.allocator, &.{ "common/aarch64/asm-offsets.c", "common/aarch64/mc-c.c", "common/aarch64/predict-c.c" }) catch @panic("OOM");
+    mod.addCSourceFiles(.{ .root = src.path(""), .files = plain.items, .flags = flags.items });
 
-    mod.addCSourceFiles(.{ .root = src.path(""), .files = plain.items, .flags = bd_flags });
-    mod.addCSourceFiles(.{ .root = src.path(""), .files = depth.items, .flags = bd8 });
+    var common_c: std.ArrayList([]const u8) = .empty;
+    common_c.appendSlice(b.allocator, &common_depth) catch @panic("OOM");
+    common_c.append(b.allocator, "common/threadpool.c") catch @panic("OOM");
+    if (x86) common_c.appendSlice(b.allocator, &.{ "common/x86/mc-c.c", "common/x86/predict-c.c" }) catch @panic("OOM");
+    if (arm64) common_c.appendSlice(b.allocator, &.{ "common/aarch64/asm-offsets.c", "common/aarch64/mc-c.c", "common/aarch64/predict-c.c" }) catch @panic("OOM");
 
-    if (asm_enabled and x86) {
-        var asm_flags: std.ArrayList([]const u8) = .empty;
-        asm_flags.appendSlice(b.allocator, &.{
-            b.fmt("-DARCH_X86_64={d}", .{b10(x86_64)}),
-            "-DSTACK_ALIGNMENT=64",
-            "-DPIC",
+    var x86_asm_flags: std.ArrayList([]const u8) = .empty;
+    x86_asm_flags.appendSlice(b.allocator, &.{
+        b.fmt("-DARCH_X86_64={d}", .{b10(x86_64)}),
+        "-DSTACK_ALIGNMENT=64",
+        "-DPIC",
+    }) catch @panic("OOM");
+    if (prefix) x86_asm_flags.append(b.allocator, "-DPREFIX") catch @panic("OOM");
+    const x86_inc = &[_]std.Build.LazyPath{ src.path(""), src.path("common/x86") };
+    if (x86) nasm.addFiles(c, mod, .{ .root = src.path(""), .files = &.{"common/x86/cpu-a.asm"}, .include_dirs = x86_inc, .flags = x86_asm_flags.items });
+
+    const setup: Ctx.Setup = .{
+        .includes = &.{src.path("")},
+        .config_headers = &.{ config, x264_config },
+    };
+    for ([_]u8{ 8, 10 }) |bits| {
+        const high = bits > 8;
+        const depth_flags = std.mem.concat(b.allocator, []const u8, &.{
+            flags.items,
+            &.{ b.fmt("-DHIGH_BIT_DEPTH={d}", .{b10(high)}), b.fmt("-DBIT_DEPTH={d}", .{bits}) },
         }) catch @panic("OOM");
-        if (prefix) asm_flags.append(b.allocator, "-DPREFIX") catch @panic("OOM");
-        const asm_depth = std.mem.concat(b.allocator, []const u8, &.{ asm_flags.items, &.{ "-DBIT_DEPTH=8", "-Dprivate_prefix=x264_8" } }) catch @panic("OOM");
-        const inc = &[_]std.Build.LazyPath{ src.path(""), src.path("common/x86") };
+        var groups: std.ArrayList(Ctx.SourceGroup) = .empty;
+        groups.append(b.allocator, .{ .root = src.path(""), .files = common_c.items, .flags = depth_flags }) catch @panic("OOM");
 
-        nasm.addFiles(c, mod, .{ .root = src.path(""), .files = &.{"common/x86/cpu-a.asm"}, .include_dirs = inc, .flags = asm_flags.items });
-        nasm.addFiles(c, mod, .{
-            .root = src.path(""),
-            .files = if (x86_64) &x86_64_asm else &x86_32_asm,
-            .include_dirs = inc,
-            .flags = asm_depth,
-        });
-        nasm.addFiles(c, mod, .{ .root = src.path(""), .files = &x86_asm, .include_dirs = inc, .flags = asm_depth });
-    }
-    if (arm64) {
-        var s_flags: std.ArrayList([]const u8) = .empty;
-        s_flags.appendSlice(b.allocator, &.{ "-DHIGH_BIT_DEPTH=0", "-DBIT_DEPTH=8" }) catch @panic("OOM");
-        if (darwin) s_flags.appendSlice(b.allocator, &.{ "-DPREFIX", "-DPIC" }) catch @panic("OOM");
-        mod.addCSourceFiles(.{ .root = src.path(""), .files = &aarch64_asm, .flags = s_flags.items });
+        if (arm64) {
+            var s_flags: std.ArrayList([]const u8) = .empty;
+            s_flags.appendSlice(b.allocator, &.{ b.fmt("-DHIGH_BIT_DEPTH={d}", .{b10(high)}), b.fmt("-DBIT_DEPTH={d}", .{bits}) }) catch @panic("OOM");
+            if (darwin) s_flags.appendSlice(b.allocator, &.{ "-DPREFIX", "-DPIC" }) catch @panic("OOM");
+            groups.append(b.allocator, .{ .root = src.path(""), .files = &aarch64_asm, .flags = s_flags.items }) catch @panic("OOM");
+        }
+        c.addSources(mod, b.fmt("x264_{d}bit", .{bits}), .{ .setup = setup, .groups = groups.items });
+
+        if (x86) {
+            const asm_flags = std.mem.concat(b.allocator, []const u8, &.{
+                x86_asm_flags.items,
+                &.{ b.fmt("-DBIT_DEPTH={d}", .{bits}), b.fmt("-Dprivate_prefix=x264_{d}", .{bits}) },
+            }) catch @panic("OOM");
+            var files: std.ArrayList([]const u8) = .empty;
+            files.appendSlice(b.allocator, if (x86_64) &x86_64_asm else &x86_32_asm) catch @panic("OOM");
+            files.appendSlice(b.allocator, &x86_asm) catch @panic("OOM");
+            files.append(b.allocator, if (high) "common/x86/sad16-a.asm" else "common/x86/sad-a.asm") catch @panic("OOM");
+            nasm.addFiles(c, mod, .{
+                .root = src.path(""),
+                .files = files.items,
+                .include_dirs = x86_inc,
+                .flags = asm_flags,
+                .object_prefix = b.fmt("x264_{d}bit_", .{bits}),
+            });
+        }
     }
 
     const lib = c.staticLibrary("x264", mod);
@@ -181,7 +200,7 @@ const x86_32_asm = [_][]const u8{ "common/x86/dct-32.asm", "common/x86/pixel-32.
 const x86_asm = [_][]const u8{
     "common/x86/bitstream-a.asm", "common/x86/const-a.asm", "common/x86/cabac-a.asm", "common/x86/dct-a.asm",
     "common/x86/deblock-a.asm",   "common/x86/mc-a.asm",    "common/x86/mc-a2.asm",   "common/x86/pixel-a.asm",
-    "common/x86/predict-a.asm",   "common/x86/quant-a.asm", "common/x86/sad-a.asm",
+    "common/x86/predict-a.asm",   "common/x86/quant-a.asm",
 };
 
 const aarch64_asm = [_][]const u8{
