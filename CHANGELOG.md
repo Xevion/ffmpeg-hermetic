@@ -5,6 +5,18 @@ release of FFmpeg 8.1.3. A new revision ships only when the bundled archives cha
 library update, a new library or a build fix. The hash in a bundle's name covers every archive in
 it, so an unchanged hash means unchanged contents.
 
+## [8.1.3-r2] - 2026-11-18
+
+### Build
+
+- x86_64 Windows MSVC bundles are byte-identical across builds: their objects no longer carry the
+  compile time ([e029642](https://github.com/Xevion/ffmpeg-hermetic/commit/e029642)). Every other
+  bundle has the same contents as in r1.
+
+### Libraries
+
+No library changes.
+
 ## [8.1.3-r1] - 2026-11-18
 
 First release.
@@ -80,4 +92,5 @@ Windows.
 | zimg | 3.0.6 | WTFPL |
 | zlib | 1.4 | Zlib |
 
+[8.1.3-r2]: https://github.com/Xevion/ffmpeg-hermetic/releases/tag/8.1.3-r2
 [8.1.3-r1]: https://github.com/Xevion/ffmpeg-hermetic/releases/tag/8.1.3-r1
