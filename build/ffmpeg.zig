@@ -334,6 +334,8 @@ fn addCuda(c: Ctx, mod: *std.Build.Module, src: *std.Build.Dependency, embed: *s
         "--cuda-gpu-arch=sm_30", "-O2",        "-std=c++11",         "-m64",                 "-S",
         "-nocudalib",            "-nocudainc", "--cuda-device-only", "-Wno-c++11-narrowing",
     });
+    // clang picks the PTX ISA version from any CUDA toolkit it finds; a path holding none keeps 4.2.
+    ptx.addDirectoryArg2(src.path("compat/cuda"), .{ .prefix = "--cuda-path=" });
     ptx.addArg("-include");
     ptx.addFileArg2(src.path("compat/cuda/cuda_runtime.h"), .{});
     ptx.addDirectoryArg2(src.path(""), .{ .prefix = "-I" });
