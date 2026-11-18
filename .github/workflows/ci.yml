@@ -41,7 +41,7 @@ jobs:
           - { os: ubuntu-24.04, target: x86_64-linux-gnu.2.17, oracle: x86_64-linux, variant: lgpl, version: "9.0" }
           - { os: ubuntu-24.04-arm, target: aarch64-linux-gnu.2.17, oracle: aarch64-linux, variant: lgpl }
           - { os: ubuntu-24.04-arm, target: aarch64-linux-gnu.2.17, oracle: aarch64-linux, variant: gpl }
-          - { os: ubuntu-24.04, target: x86_64-windows-gnu, oracle: x86_64-windows-gnu, variant: lgpl }
+          - { os: ubuntu-24.04, target: x86_64-windows-gnu, oracle: x86_64-windows-gnu, variant: lgpl, reproduce: true }
           - { os: ubuntu-24.04, target: x86_64-windows-gnu, oracle: x86_64-windows-gnu, variant: gpl }
           - { os: ubuntu-24.04, target: x86_64-macos, oracle: x86_64-macos, variant: lgpl }
           - { os: ubuntu-24.04, target: x86_64-macos, oracle: x86_64-macos, variant: gpl }
@@ -78,6 +78,21 @@ jobs:
         with:
           name: bundle-${{ matrix.target }}-${{ matrix.variant }}${{ matrix.version && format('-{0}', matrix.version) || '' }}
           path: out/bundle/*.tar.zst*
+      # Releases are cut when the recipe changes, so a cold build elsewhere must give the same bytes.
+      - name: Reproduce from another directory
+        if: matrix.reproduce
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/repro" HEAD
+          cp -a zig-pkg "$RUNNER_TEMP/repro/"
+          read -ra args <<< "$ARGS"
+          [[ -z $RELEASE_TAG ]] || args+=("-Dbundle-rev=${RELEASE_TAG##*-r}")
+          (cd "$RUNNER_TEMP/repro" && ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/repro-global" zig build "${args[@]}" --prefix out bundle)
+          a=(out/bundle/*/); b=("$RUNNER_TEMP"/repro/out/bundle/*/)
+          if ! cmp out/bundle/*.tar.zst "$RUNNER_TEMP"/repro/out/bundle/*.tar.zst; then
+            jq -r .recipe "${a[0]}MANIFEST.json" "${b[0]}MANIFEST.json"
+            diff -rq "${a[0]}" "${b[0]}"
+            exit 1
+          fi
       - name: FATE samples
         if: matrix.fate
         id: month
