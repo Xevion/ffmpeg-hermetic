@@ -34,7 +34,8 @@ pub const Options = struct {
 pub fn addFiles(n: Nasm, c: Ctx, into: *std.Build.Module, opts: Options) void {
     for (opts.files) |file| {
         const run = c.b.addRunArtifact(n.exe);
-        run.addArgs(&.{ "-f", n.format });
+        // COFF objects otherwise carry the assembly time in their header.
+        run.addArgs(&.{ "--reproducible", "-f", n.format });
         for (opts.include_dirs) |dir| run.addDirectoryArg2(dir, .{ .prefix = "-I", .suffix = "/" });
         run.addArgs(opts.flags);
         for (opts.preincludes) |pre| run.addFileArg2(pre, .{ .prefix = "-P" });
