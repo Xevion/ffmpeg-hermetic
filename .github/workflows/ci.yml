@@ -86,7 +86,8 @@ jobs:
         if: matrix.reproduce
         run: |
           git worktree add --detach "$RUNNER_TEMP/repro" HEAD
-          cp -a zig-pkg "$RUNNER_TEMP/repro/"
+          # Git Bash cannot recreate symlinks whose target is copied later, so Windows copies contents.
+          if [[ $RUNNER_OS == Windows ]]; then cp -rL zig-pkg "$RUNNER_TEMP/repro/"; else cp -a zig-pkg "$RUNNER_TEMP/repro/"; fi
           read -ra args <<< "$ARGS"
           [[ -z $RELEASE_TAG ]] || args+=("-Dbundle-rev=${RELEASE_TAG##*-r}")
           (cd "$RUNNER_TEMP/repro" && ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/repro-global" zig build "${args[@]}" --prefix out bundle)
