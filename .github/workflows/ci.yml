@@ -59,7 +59,7 @@ jobs:
         -Dtarget=${{ matrix.target }} --release=fast -Donly=ffmpeg
         ${{ matrix.variant == 'gpl' && '-Dgpl' || '' }}
         ${{ matrix.version && format('-Dffmpeg-version={0}', matrix.version) || '' }}
-        ${{ matrix.fate && '-Dprograms=true' || '' }}
+        -Dprograms=true
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/setup
@@ -70,6 +70,9 @@ jobs:
           read -ra args <<< "$ARGS"
           [[ -z $RELEASE_TAG ]] || args+=("-Dbundle-rev=${RELEASE_TAG##*-r}")
           zig build "${args[@]}" --prefix out install bundle bundle-check
+      - name: Run ffmpeg
+        if: (runner.os == 'Linux' && contains(matrix.target, 'linux')) || runner.os == 'Windows'
+        run: out/bin/ffmpeg -hide_banner -f lavfi -i testsrc2=d=1 -c:v libvpx-vp9 -f null -
       # The config job runs off Windows, where msvc oracles need an SDK.
       - name: Oracle (msvc)
         if: runner.os == 'Windows'
@@ -88,7 +91,11 @@ jobs:
           [[ -z $RELEASE_TAG ]] || args+=("-Dbundle-rev=${RELEASE_TAG##*-r}")
           (cd "$RUNNER_TEMP/repro" && ZIG_GLOBAL_CACHE_DIR="$RUNNER_TEMP/repro-global" zig build "${args[@]}" --prefix out bundle)
           a=(out/bundle/*/); b=("$RUNNER_TEMP"/repro/out/bundle/*/)
-          if ! cmp out/bundle/*.tar.zst "$RUNNER_TEMP"/repro/out/bundle/*.tar.zst; then
+          status=0
+          for f in out/bundle/*.tar.zst; do
+            cmp "$f" "$RUNNER_TEMP/repro/$f" || status=1
+          done
+          if (( status )); then
             jq -r .recipe "${a[0]}MANIFEST.json" "${b[0]}MANIFEST.json"
             diff -rq "${a[0]}" "${b[0]}"
             exit 1

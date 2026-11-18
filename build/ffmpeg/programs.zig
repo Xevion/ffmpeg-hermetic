@@ -30,8 +30,9 @@ pub const Inputs = struct {
 /// The programs this build produces, by fftools name.
 const built = [_][]const u8{ "ffmpeg", "ffprobe" };
 
-pub fn add(c: Ctx, in: Inputs) void {
+pub fn add(c: Ctx, in: Inputs) []const *std.Build.Step.Compile {
     const b = c.b;
+    var exes: std.ArrayList(*std.Build.Step.Compile) = .empty;
     // Only the libraries define HAVE_AV_CONFIG_H; with it the installed headers drop their version.h.
     var flags: std.ArrayList([]const u8) = .empty;
     for (in.flags) |f| if (!std.mem.eql(u8, f, "-DHAVE_AV_CONFIG_H")) flags.append(b.allocator, f) catch @panic("OOM");
@@ -56,7 +57,9 @@ pub fn add(c: Ctx, in: Inputs) void {
         const exe = b.addExecutable(.{ .name = prog.name, .root_module = mod });
         if (c.libc_file) |file| exe.setLibCFile(file);
         b.installArtifact(exe);
+        exes.append(b.allocator, exe) catch @panic("OOM");
     }
+    return exes.items;
 }
 
 /// The C array FFmpeg's make rules produce from a `.html` or `.css` resource: minified for CSS,

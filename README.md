@@ -90,8 +90,13 @@ The `bundle` step packs a directory and a matching `.tar.zst` containing:
 - every static archive
 - FFmpeg's headers
 - `MANIFEST.json`: the link order (FFmpeg's libraries, then dependencies in topological order,
-  then the C++ runtime and system libraries), plus the version, URL and SHA-256 of every source
+  then the C++ runtime and system libraries), plus the version, URL and Zig package hash of every
+  source
 - license files for everything that ships
+
+With `-Dprograms`, the step also packs `ffmpeg` and `ffprobe` with the same manifest and licenses
+into a second archive, `ffmpeg-hermetic-<version>-r<N>-programs-<variant>-<platform>.tar.zst`.
+The programs are statically linked; on Linux they need only glibc.
 
 `bundle-check` links a C program against the bundle in exactly the manifest's order, with no
 linker groups. It links with lld and, on a matching host, GNU ld, and runs the result on Linux.

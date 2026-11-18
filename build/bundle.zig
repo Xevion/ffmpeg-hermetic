@@ -35,8 +35,8 @@ const Node = struct {
 
 /// Adds the `bundle` and `bundle-check` steps. `built` is every library that was built, in
 /// registry order, and `ffmpeg` the FFmpeg libraries whose installed headers become the bundle's
-/// include directory.
-pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []const *Compile) void {
+/// include directory. `programs` (ffmpeg, ffprobe) go into a second archive beside the bundle.
+pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []const *Compile, programs: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     const platform = Platform.of(b, t);
@@ -100,6 +100,10 @@ pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []con
     for (archives.items) |artifact| {
         run.addArg("--lib");
         run.addPrefixedArtifactArg(b.fmt("{s}=", .{platform.archiveFile(b, artifact.name)}), artifact);
+    }
+    for (programs) |exe| {
+        run.addArg("--bin");
+        run.addPrefixedArtifactArg(b.fmt("{s}{s}=", .{ exe.name, t.exeFileExt() }), exe);
     }
     for (ffmpeg) |artifact| {
         run.addArg("--include");

@@ -185,8 +185,8 @@ pub fn build(b: *std.Build) void {
         for (&libraries) |*lib| {
             if (lib.meta.ffmpeg_probes.len > 0) probes.append(b.allocator, .{ .names = lib.meta.ffmpeg_probes, .found = c.built.contains(lib.meta.name) }) catch @panic("OOM");
         }
-        const ffmpeg_libs = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs, .version = ffmpeg_version });
-        for (ffmpeg_libs) |artifact| b.installArtifact(artifact);
-        if (ffmpeg_libs.len > 0) bundle.add(c, ffmpeg_version, deps.items, ffmpeg_libs);
+        const ff = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs, .version = ffmpeg_version });
+        for (ff.libs) |artifact| b.installArtifact(artifact);
+        if (ff.libs.len > 0) bundle.add(c, ffmpeg_version, deps.items, ff.libs, ff.programs);
     }
 }

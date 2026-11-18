@@ -1,6 +1,8 @@
 //! Host tool that packs built archives and headers into a bundle: a directory with
-//! MANIFEST.json, plus a reproducible `<name>.tar.zst` and its `.sha256`.
-//! usage: bundle_pack <spec.json> <out-dir> [--lib <file name>=<archive>]... [--include <dir>]... [--license <name>=<file>]...
+//! MANIFEST.json, plus a reproducible `<name>.tar.zst` and its `.sha256`. Programs passed with
+//! `--bin` go into a second archive of their own with the same MANIFEST.json and licenses.
+//! usage: bundle_pack <spec.json> <out-dir> [--lib <file name>=<archive>]... [--include <dir>]...
+//!        [--license <name>=<file>]... [--bin <file name>=<executable>]...
 const std = @import("std");
 const Io = std.Io;
 const sha256 = std.crypto.hash.sha2.Sha256;
@@ -69,6 +71,7 @@ pub fn main(init: std.process.Init) !void {
     const out_path = args[2];
 
     var files: std.ArrayList(File) = .empty;
+    var bins: std.ArrayList(File) = .empty;
     var i: usize = 3;
     while (i < args.len) : (i += 2) {
         if (i + 1 >= args.len) return error.Usage;
@@ -85,6 +88,10 @@ pub fn main(init: std.process.Init) !void {
             const data = try cwd.readFileAlloc(io, value[eq + 1 ..], arena, .unlimited);
             const path = try std.fmt.allocPrint(arena, "licenses/{s}/{s}", .{ value[0..eq], std.fs.path.basename(value[eq + 1 ..]) });
             try files.append(arena, .{ .path = path, .data = data });
+        } else if (std.mem.eql(u8, flag, "--bin")) {
+            const eq = std.mem.indexOfScalar(u8, value, '=') orelse return error.Usage;
+            const data = try cwd.readFileAlloc(io, value[eq + 1 ..], arena, .unlimited);
+            try bins.append(arena, .{ .path = try std.fmt.allocPrint(arena, "bin/{s}", .{value[0..eq]}), .data = data });
         } else return error.Usage;
     }
     std.mem.sortUnstable(File, files.items, {}, File.lessThan);
@@ -135,19 +142,36 @@ pub fn main(init: std.process.Init) !void {
         try out_dir.writeFile(io, .{ .sub_path = dest, .data = f.data });
     }
 
+    try writeArchive(io, arena, out_dir, name, files.items);
+
+    if (bins.items.len == 0) return;
+    const programs_name = try std.fmt.allocPrint(arena, "ffmpeg-hermetic-{s}-r{d}-programs-{s}-{s}", .{
+        spec.ffmpeg_version, spec.bundle_rev, spec.variant, spec.suffix,
+    });
+    for (files.items) |f| {
+        if (std.mem.startsWith(u8, f.path, "licenses/") or std.mem.eql(u8, f.path, "MANIFEST.json")) try bins.append(arena, f);
+    }
+    std.mem.sortUnstable(File, bins.items, {}, File.lessThan);
+    try writeArchive(io, arena, out_dir, programs_name, bins.items);
+}
+
+/// Writes `<name>.tar.zst`, every file under a top directory `<name>`, and its `.sha256`.
+/// Files under `bin/` are executable.
+fn writeArchive(io: Io, arena: std.mem.Allocator, out_dir: Io.Dir, name: []const u8, files: []const File) !void {
     var tar_bytes: Io.Writer.Allocating = .init(arena);
     var tar: std.tar.Writer = .{ .underlying_writer = &tar_bytes.writer };
     try tar.writeDir(name, .{ .mode = 0o755 });
     tar.prefix = name;
     var made: std.StringHashMapUnmanaged(void) = .empty;
-    for (files.items) |f| {
+    for (files) |f| {
         var end: usize = 0;
         while (std.mem.indexOfScalarPos(u8, f.path, end, '/')) |slash| : (end = slash + 1) {
             const dir = f.path[0..slash];
             if ((try made.getOrPut(arena, dir)).found_existing) continue;
             try tar.writeDir(dir, .{ .mode = 0o755 });
         }
-        try tar.writeFileBytes(f.path, f.data, .{ .mode = 0o644 });
+        const mode: u32 = if (std.mem.startsWith(u8, f.path, "bin/")) 0o755 else 0o644;
+        try tar.writeFileBytes(f.path, f.data, .{ .mode = mode });
     }
     try tar.finishPedantically();
 

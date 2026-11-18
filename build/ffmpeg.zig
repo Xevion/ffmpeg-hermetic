@@ -45,10 +45,17 @@ pub const Options = struct {
     programs: bool = false,
 };
 
-pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *std.Build.Step.Compile {
+pub const Built = struct {
+    /// FFmpeg's libraries, empty while the FFmpeg pin is not fetched.
+    libs: []const *std.Build.Step.Compile = &.{},
+    /// ffmpeg and ffprobe, with `Options.programs`.
+    programs: []const *std.Build.Step.Compile = &.{},
+};
+
+pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) Built {
     const b = c.b;
     const t = c.target.result;
-    const src = c.lazyUpstream(o.version.pin()) orelse return &.{};
+    const src = c.lazyUpstream(o.version.pin()) orelse return .{};
 
     const libraries = std.mem.concat(b.allocator, []const u8, &.{ o.libraries, config.systemLibraries(t) }) catch @panic("OOM");
     var state: resolve.State = .init(b.allocator, o.version);
@@ -216,7 +223,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     for (deps) |dep| for (dep.meta.system_libs.forTarget(c)) |name| {
         if (!inList(system_libs.items, name)) system_libs.append(b.allocator, name) catch @panic("OOM");
     };
-    if (o.programs) programs.add(c, .{
+    const exes = if (!o.programs) &.{} else programs.add(c, .{
         .data = state.data,
         .headers = headers,
         .gen = gen,
@@ -238,7 +245,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     const listing = std.mem.join(b.allocator, "\n", manifest.items) catch @panic("OOM");
     const sources_txt = b.addWriteFiles().add("sources.txt", b.fmt("{s}\n", .{listing}));
     installConfig(b, config_step, sources_txt, "sources.txt");
-    return out.items;
+    return .{ .libs = out.items, .programs = exes };
 }
 
 /// The output of `lib`'s host program for `path`: what it prints when run with the path's flag.
