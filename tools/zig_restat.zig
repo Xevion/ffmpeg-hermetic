@@ -4,6 +4,8 @@
 //! contents match, and an unpacked cache archive or package directory gives every file a new inode.
 //! For each manifest record whose file still hashes to the recorded digest, this stores the file's
 //! current stat. Records whose contents differ, or that it cannot resolve, are left for zig to miss.
+//! Manifests of the build configuration itself (those recording the root build.zig) are deleted:
+//! CI does not cache the configured graph in c/, and a hit on one opens that missing file.
 //!
 //! TODO: delete this tool and its CI step once the pinned zig is 0.18, which fixes the comparison.
 //!
@@ -47,7 +49,7 @@ pub fn main(init: std.process.Init) !void {
 
     // Thousands of manifests list the same headers; hash each file once.
     var known: std.StringHashMapUnmanaged(?Known) = .empty;
-    var counts: struct { manifests: usize = 0, rewritten: usize = 0, taken: usize = 0, left: usize = 0 } = .{};
+    var counts: struct { manifests: usize = 0, rewritten: usize = 0, dropped: usize = 0, taken: usize = 0, left: usize = 0 } = .{};
 
     var it = manifests.iterate();
     while (try it.next(io)) |entry| {
@@ -57,6 +59,7 @@ pub fn main(init: std.process.Init) !void {
         counts.manifests += 1;
 
         var changed = false;
+        var configuration = false;
         var off: usize = 0;
         while (off + 1 < contents.len) {
             const file_off: File.Offset = @fromBackingInt(@intCast(@as(u32, @intCast(off))));
@@ -65,6 +68,7 @@ pub fn main(init: std.process.Init) !void {
             off += File.sizeOf(path.len);
             if (file.flags.is_directory or file.flags.metadata_only or path.len == 0) continue;
             if (file.flags.prefix >= prefixes.len) continue;
+            if (file.flags.prefix == @backingInt(PathPrefix.build_root) and std.mem.eql(u8, path, "build.zig")) configuration = true;
 
             const key = try std.fmt.allocPrint(arena, "{d}/{s}", .{ file.flags.prefix, path });
             const gop = try known.getOrPut(arena, key);
@@ -85,13 +89,16 @@ pub fn main(init: std.process.Init) !void {
             changed = true;
             counts.taken += 1;
         }
-        if (changed) {
+        if (configuration) {
+            try manifests.deleteFile(io, entry.name);
+            counts.dropped += 1;
+        } else if (changed) {
             try manifests.writeFile(io, .{ .sub_path = entry.name, .data = contents });
             counts.rewritten += 1;
         }
     }
-    std.debug.print("zig_restat: {d} manifests, {d} rewritten; {d} records took a new stat, {d} left\n", .{
-        counts.manifests, counts.rewritten, counts.taken, counts.left,
+    std.debug.print("zig_restat: {d} manifests, {d} rewritten, {d} configurations dropped; {d} records took a new stat, {d} left\n", .{
+        counts.manifests, counts.rewritten, counts.dropped, counts.taken, counts.left,
     });
 }
 
