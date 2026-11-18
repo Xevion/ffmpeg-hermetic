@@ -150,8 +150,12 @@ pub fn main(init: std.process.Init) !void {
     try writeArchive(io, arena, out_dir, name, files.items);
 
     if (bins.items.len == 0) return;
+    // Unlike a bundle, the name has no recipe hash to tell Linux architectures apart.
+    const platform = if (std.mem.eql(u8, spec.glibc_floor, "none")) spec.suffix else try std.fmt.allocPrint(arena, "{s}-linux-{s}", .{
+        spec.target[0..std.mem.indexOfScalar(u8, spec.target, '-').?], spec.suffix,
+    });
     const programs_name = try std.fmt.allocPrint(arena, "ffmpeg-hermetic-{s}-r{d}-programs-{s}-{s}", .{
-        spec.ffmpeg_version, spec.bundle_rev, spec.variant, spec.suffix,
+        spec.ffmpeg_version, spec.bundle_rev, spec.variant, platform,
     });
     for (files.items) |f| {
         const shared = std.mem.startsWith(u8, f.path, "licenses/") or std.mem.eql(u8, f.path, "MANIFEST.json") or std.mem.eql(u8, f.path, sbom_file);
