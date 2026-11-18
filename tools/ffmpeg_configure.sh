@@ -203,7 +203,7 @@ nm=${NM:-nm}
 [ "$os" = darwin ] && nm=${NM:?set NM to an llvm-nm for Mach-O objects}
 cd "$bld"
 PATH=$bld/tools:$PATH PKG_CONFIG_LIBDIR=$bld/pkgconfig PKG_CONFIG_PATH='' "$src/configure" \
-  --prefix=/ffoxide-ffmpeg --cc="$bld/tools/cc" --cxx="$bld/tools/c++" --ar="$bld/tools/ar" \
+  --prefix=/ffmpeg-hermetic --cc="$bld/tools/cc" --cxx="$bld/tools/c++" --ar="$bld/tools/ar" \
   --ranlib="$bld/tools/ranlib" --arch="$arch" --target-os="$os" --enable-cross-compile \
   --pkg-config=pkg-config --pkg-config-flags=--static \
   --extra-cflags="$cflags" --extra-ldflags="$ldflags" \

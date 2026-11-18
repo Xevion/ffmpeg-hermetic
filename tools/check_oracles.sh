@@ -40,7 +40,7 @@ for dir in gen/ffmpeg/*/*/oracle; do
     prefix=$out/$version/$name
     echo "== $rel"
     if zig build -Dtarget="$target" --release=fast -Donly=ffmpeg "${flags[@]}" --prefix "$prefix" ffmpeg-config &&
-        "$python" tools/check_config.py "$prefix/share/ffmpeg-zig/config" "$dir"; then
+        "$python" tools/check_config.py "$prefix/share/ffmpeg-hermetic/config" "$dir"; then
         checked=$((checked + 1))
     else
         status=1

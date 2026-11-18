@@ -1,5 +1,5 @@
 .{
-    .name = .ffmpeg_zig,
+    .name = .ffmpeg_hermetic,
     .version = "0.0.1",
     .dependencies = .{
         .ffmpeg_8_1 = .{
@@ -220,5 +220,5 @@
     },
     .minimum_zig_version = "0.17.0",
     .paths = .{""},
-    .fingerprint = 0x694662fd2e999713,
+    .fingerprint = 0xd38226a22e999713,
 }

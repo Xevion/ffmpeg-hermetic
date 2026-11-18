@@ -6,7 +6,7 @@ usage: ffmpeg_extract.py <configured-build-dir> <out-dir>
 Reads `make -n V=1` in a tree configured by tools/ffmpeg_configure.sh. Writes the config and
 component headers and lists configure generated, and sources.txt: every source each library
 compiles (with the extra include dirs its Makefile adds) and every header it installs, in the
-format build/ffmpeg.zig installs to share/ffmpeg-zig/config/sources.txt.
+format build/ffmpeg.zig installs to share/ffmpeg-hermetic/config/sources.txt.
 """
 import os
 import re

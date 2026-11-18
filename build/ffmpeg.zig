@@ -101,7 +101,7 @@ pub fn build(c: Ctx, nasm: Nasm, deps: []const Meta.Built, o: Options) []const *
     }
 
     var manifest: std.ArrayList([]const u8) = .empty;
-    const config_step = b.step("ffmpeg-config", "Install only FFmpeg's resolved configuration to <prefix>/share/ffmpeg-zig/config");
+    const config_step = b.step("ffmpeg-config", "Install only FFmpeg's resolved configuration to <prefix>/share/ffmpeg-hermetic/config");
     for ([_]struct { *std.Build.Step.ConfigHeader, []const u8 }{
         .{ headers.config_h, "config.h" },
         .{ headers.config_asm, "config.asm" },
@@ -270,7 +270,7 @@ fn hostProgram(b: *std.Build, src: *std.Build.Dependency, prog: resolve.HostProg
 }
 
 fn installConfig(b: *std.Build, config_step: *std.Build.Step, file: std.Build.LazyPath, name: []const u8) void {
-    const install = b.addInstallFile(file, b.fmt("share/ffmpeg-zig/config/{s}", .{name}));
+    const install = b.addInstallFile(file, b.fmt("share/ffmpeg-hermetic/config/{s}", .{name}));
     b.getInstallStep().dependOn(&install.step);
     config_step.dependOn(&install.step);
 }

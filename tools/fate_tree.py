@@ -38,7 +38,7 @@ def main():
     if len(sys.argv) != 5:
         fail("usage: fate_tree.py <ffmpeg-src> <prefix> <tree> <zig-target>")
     src, prefix, tree, target = (os.path.realpath(a) if i < 3 else a for i, a in enumerate(sys.argv[1:]))
-    cfg = os.path.join(prefix, "share/ffmpeg-zig/config")
+    cfg = os.path.join(prefix, "share/ffmpeg-hermetic/config")
     for need in (os.path.join(cfg, "config.h"), os.path.join(prefix, "bin/ffmpeg"), os.path.join(prefix, "bin/ffprobe")):
         if not os.path.exists(need):
             fail(f"{need} is missing; build with -Dprograms=true and install into {prefix}")

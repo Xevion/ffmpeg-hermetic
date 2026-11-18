@@ -620,8 +620,8 @@ pub fn add(c: Ctx, s: *const resolve.State, o: Options) Headers {
         else
             (if (o.version3) "LGPL version 3 or later" else "LGPL version 2.1 or later"),
         .CONFIG_THIS_YEAR = 2026,
-        .FFMPEG_DATADIR = "/ffoxide-ffmpeg/share/ffmpeg",
-        .AVCONV_DATADIR = "/ffoxide-ffmpeg/share/ffmpeg",
+        .FFMPEG_DATADIR = "/ffmpeg-hermetic/share/ffmpeg",
+        .AVCONV_DATADIR = "/ffmpeg-hermetic/share/ffmpeg",
         .CC_IDENT = "zig cc",
         .EXTERN_PREFIX = if (darwin or (windows and t.cpu.arch == .x86)) "_" else "",
     });

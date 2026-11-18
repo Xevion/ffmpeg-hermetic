@@ -1,5 +1,5 @@
 //! The `bundle` step: libc++ and libc++abi built from zig's bundled sources, then every archive,
-//! FFmpeg's headers and a MANIFEST.json packed into an ffoxide bundle directory and `.tar.zst`.
+//! FFmpeg's headers and a MANIFEST.json packed into a bundle directory and `.tar.zst`.
 const std = @import("std");
 const builtin = @import("builtin");
 const Ctx = @import("Ctx.zig");

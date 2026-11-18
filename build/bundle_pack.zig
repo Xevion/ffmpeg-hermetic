@@ -1,4 +1,4 @@
-//! Host tool that packs built archives and headers into an ffoxide bundle: a directory with
+//! Host tool that packs built archives and headers into a bundle: a directory with
 //! MANIFEST.json, plus a reproducible `<name>.tar.zst` and its `.sha256`.
 //! usage: bundle_pack <spec.json> <out-dir> [--lib <file name>=<archive>]... [--include <dir>]... [--license <name>=<file>]...
 const std = @import("std");
@@ -104,7 +104,7 @@ pub fn main(init: std.process.Init) !void {
     }
     const digest = std.fmt.bytesToHex(outer.finalResult(), .lower);
     const recipe = digest[0..12];
-    const name = try std.fmt.allocPrint(arena, "ffoxide-ffmpeg-{s}-r{d}-{s}-{s}-{s}", .{
+    const name = try std.fmt.allocPrint(arena, "ffmpeg-hermetic-{s}-r{d}-{s}-{s}-{s}", .{
         spec.ffmpeg_version, spec.bundle_rev, recipe, spec.variant, spec.suffix,
     });
 

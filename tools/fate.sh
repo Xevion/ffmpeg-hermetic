@@ -3,7 +3,7 @@
 #
 # usage: tools/fate.sh <prefix> <ffmpeg-src> <samples> [target [make-args...]]
 #
-#   prefix      install prefix holding bin/ffmpeg, bin/ffprobe, lib/*.a and share/ffmpeg-zig/config
+#   prefix      install prefix holding bin/ffmpeg, bin/ffprobe, lib/*.a and share/ffmpeg-hermetic/config
 #   ffmpeg-src  the unpacked FFmpeg tree (zig-pkg/<hash> of the ffmpeg dependency)
 #   samples     FATE sample suite (`rsync -vrltLW rsync://fate-suite.ffmpeg.org/fate-suite/ <dir>`)
 #   target      zig target the build used (default x86_64-linux-gnu.2.17)

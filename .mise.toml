@@ -1,0 +1,6 @@
+[tools]
+lychee = { version = "0.24.2", libc = "musl" }
+
+[tasks.links]
+description = "Check every link in the README"
+run = "lychee --no-progress README.md"

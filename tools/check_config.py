@@ -3,7 +3,7 @@
 
 usage: check_config.py <computed-dir> <oracle-dir>
 
-The computed dir is <prefix>/share/ffmpeg-zig/config; the oracle dir is what
+The computed dir is <prefix>/share/ffmpeg-hermetic/config; the oracle dir is what
 tools/ffmpeg_extract.py wrote. config.h, config.asm and libavutil/avconfig.h are compared value
 by value, ignoring ALLOWED, the keys this build sets differently on purpose. Every other oracle
 file (component headers and lists, sources.txt) must match line for line. Exits 1 on any
