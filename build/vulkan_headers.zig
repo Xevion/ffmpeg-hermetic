@@ -9,6 +9,7 @@ pub const meta: Meta = .{
     .name = "vulkan_headers",
     .version = "1.4.368",
     .licenses = &.{"LICENSE.md"},
+    .spdx = "Apache-2.0 OR MIT",
     .ffmpeg = &.{"vulkan"},
     .ffmpeg_probes = &.{"vulkan_1_4"},
 };

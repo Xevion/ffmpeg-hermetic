@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libwebp",
     .version = "1.6.0",
     .licenses = &.{ "COPYING", "PATENTS" },
+    .spdx = "BSD-3-Clause",
     .ffmpeg = &.{"libwebp"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

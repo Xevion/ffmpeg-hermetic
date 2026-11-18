@@ -15,6 +15,8 @@ pub fn meta(comptime v: resolve.Version) Meta {
         .zon = v.pin(),
         .version = v.data().version,
         .licenses = &.{ "COPYING.GPLv2", "COPYING.GPLv3", "COPYING.LGPLv2.1", "COPYING.LGPLv3", "LICENSE.md" },
+        // The bundle replaces this with the license configure reports for the build's flags.
+        .spdx = "LGPL-2.1-or-later",
     };
 }
 

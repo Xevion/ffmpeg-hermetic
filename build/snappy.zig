@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "snappy",
     .version = "1.3.1",
     .licenses = &.{"COPYING"},
+    .spdx = "BSD-3-Clause",
     .ffmpeg = &.{"libsnappy"},
 };
 

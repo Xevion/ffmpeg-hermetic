@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "vvenc",
     .version = "1.14.0",
     .licenses = &.{"LICENSE.txt"},
+    .spdx = "BSD-3-Clause-Clear",
     .ffmpeg = &.{"libvvenc"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

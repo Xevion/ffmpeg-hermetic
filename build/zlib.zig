@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "zlib",
     .version = "1.4",
     .licenses = &.{"LICENSE"},
+    .spdx = "Zlib",
     .ffmpeg = &.{"zlib"},
     .ffmpeg_probes = &.{"zlib_gzip"},
 };

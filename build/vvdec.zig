@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "vvdec",
     .version = "3.2.1",
     .licenses = &.{"LICENSE.txt"},
+    .spdx = "BSD-3-Clause-Clear",
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };
 

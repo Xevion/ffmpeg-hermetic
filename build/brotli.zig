@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "brotli",
     .version = "1.2.1",
     .licenses = &.{"LICENSE"},
+    .spdx = "MIT",
     .system_libs = .{ .linux = &.{"m"} },
 };
 

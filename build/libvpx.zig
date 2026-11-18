@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libvpx",
     .version = "1.17.0",
     .licenses = &.{ "LICENSE", "PATENTS" },
+    .spdx = "BSD-3-Clause",
     .ffmpeg = &.{"libvpx"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

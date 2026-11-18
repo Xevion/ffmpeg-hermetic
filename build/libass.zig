@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libass",
     .version = "0.17.5",
     .licenses = &.{"COPYING"},
+    .spdx = "ISC",
     .needs = &.{ "freetype", "fribidi", "harfbuzz" },
     .ffmpeg = &.{"libass"},
     .system_libs = .{ .linux = &.{"m"} },

@@ -6,6 +6,7 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "libogg",
     .version = "1.3.6",
+    .spdx = "BSD-3-Clause",
     .licenses = &.{"COPYING"},
 };
 

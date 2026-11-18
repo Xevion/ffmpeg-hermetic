@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "harfbuzz",
     .version = "15.1.0",
     .licenses = &.{"COPYING"},
+    .spdx = "MIT-Modern-Variant",
     .needs = &.{"freetype"},
     .ffmpeg = &.{"libharfbuzz"},
     .ffmpeg_include_subdirs = &.{"harfbuzz"},

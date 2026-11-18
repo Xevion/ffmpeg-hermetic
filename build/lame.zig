@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .name = "lame",
     .version = "4.0",
     .licenses = &.{ "COPYING", "LICENSE" },
+    .spdx = "LGPL-2.0-or-later",
     .ffmpeg = &.{"libmp3lame"},
     .system_libs = .{ .linux = &.{"m"} },
 };

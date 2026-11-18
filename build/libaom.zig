@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libaom",
     .version = "3.15.3",
     .licenses = &.{ "LICENSE", "PATENTS" },
+    .spdx = "BSD-2-Clause",
     .ffmpeg = &.{"libaom"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

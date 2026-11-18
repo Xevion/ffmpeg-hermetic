@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "openjpeg",
     .version = "2.5.4",
     .licenses = &.{"LICENSE"},
+    .spdx = "BSD-2-Clause",
     .ffmpeg = &.{"libopenjpeg"},
     .ffmpeg_windows_defines = &.{"OPJ_STATIC"},
     .ffmpeg_include_subdirs = &.{"openjpeg-2.5"},

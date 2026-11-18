@@ -10,6 +10,7 @@ pub const meta: Meta = .{
     .name = "openssl",
     .version = "3.6.5",
     .licenses = &.{"LICENSE.txt"},
+    .spdx = "Apache-2.0",
     .ffmpeg = &.{"openssl"},
     .license = .gpl_needs_version3,
     .system_libs = .{ .linux = &.{"pthread"} },

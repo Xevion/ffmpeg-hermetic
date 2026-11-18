@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "x265",
     .version = "4.2",
     .licenses = &.{"COPYING"},
+    .spdx = "GPL-2.0-or-later",
     .ffmpeg = &.{"libx265"},
     .license = .gpl,
     .system_libs = .{ .linux = &.{ "m", "pthread", "dl" } },

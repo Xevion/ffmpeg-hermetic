@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "kvazaar",
     .version = "2.3.2",
     .licenses = &.{ "LICENSE", "LICENSE.EXT.greatest" },
+    .spdx = "BSD-3-Clause",
     .ffmpeg = &.{"libkvazaar"},
     .ffmpeg_windows_defines = &.{"KVZ_STATIC_LIB"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },

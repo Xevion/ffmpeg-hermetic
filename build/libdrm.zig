@@ -7,6 +7,7 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "libdrm",
     .version = "2.4.134",
+    .spdx = "MIT",
     .ffmpeg = &.{"libdrm"},
     .ffmpeg_include_subdirs = &.{"libdrm"},
     .ffmpeg_probes = &.{ "linux_dma_buf_h", "libdrm_getfb2" },

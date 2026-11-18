@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "openh264",
     .version = "2.7.0",
     .licenses = &.{"LICENSE"},
+    .spdx = "BSD-2-Clause",
     .ffmpeg = &.{"libopenh264"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },
 };

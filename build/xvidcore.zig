@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "xvidcore",
     .version = "013c664b",
     .licenses = &.{"LICENSE"},
+    .spdx = "GPL-2.0-or-later",
     .ffmpeg = &.{"libxvid"},
     .license = .gpl,
     .supports = Meta.support.x86_64OnMsvc,

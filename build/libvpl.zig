@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .name = "libvpl",
     .version = "2.17.0",
     .licenses = &.{"LICENSE"},
+    .spdx = "MIT",
     .ffmpeg = &.{"libvpl"},
     .ffmpeg_probes = &.{ "libmfx", "struct_mfxConfigInterface", "MFX_CODEC_VP9" },
     .ffmpeg_defines = &.{"MFX_DEPRECATED_OFF"},

@@ -1,8 +1,9 @@
 //! Host tool that packs built archives and headers into a bundle: a directory with
-//! MANIFEST.json, plus a reproducible `<name>.tar.zst` and its `.sha256`. Programs passed with
-//! `--bin` go into a second archive of their own with the same MANIFEST.json and licenses.
+//! MANIFEST.json and a CycloneDX SBOM, plus a reproducible `<name>.tar.zst` and its `.sha256`.
+//! Programs passed with `--bin` go into a second archive of their own with the same MANIFEST.json,
+//! SBOM and licenses.
 //! usage: bundle_pack <spec.json> <out-dir> [--lib <file name>=<archive>]... [--include <dir>]...
-//!        [--license <name>=<file>]... [--bin <file name>=<executable>]...
+//!        [--license <name>=<file>]... [--bin <file name>=<executable>]... [--libcxx-config <__config>]
 const std = @import("std");
 const Io = std.Io;
 const sha256 = std.crypto.hash.sha2.Sha256;
@@ -21,7 +22,7 @@ const zstd_level = 19;
 const dylib_allowlist = [_][]const u8{ "m", "pthread", "dl", "rt", "c" };
 
 const Link = struct { name: []const u8, kind: []const u8 };
-const Source = struct { name: []const u8, version: []const u8, sha256: []const u8, url: []const u8 };
+const Source = struct { name: []const u8, version: []const u8, url: []const u8, zig_hash: []const u8, license: []const u8 };
 
 const Spec = struct {
     variant: []const u8,
@@ -36,7 +37,7 @@ const Spec = struct {
 };
 
 const Manifest = struct {
-    schema: u32 = 1,
+    schema: u32 = 2,
     name: []const u8,
     variant: []const u8,
     ffmpeg_version: []const u8,
@@ -72,6 +73,7 @@ pub fn main(init: std.process.Init) !void {
 
     var files: std.ArrayList(File) = .empty;
     var bins: std.ArrayList(File) = .empty;
+    var libcxx_version: ?[]const u8 = null;
     var i: usize = 3;
     while (i < args.len) : (i += 2) {
         if (i + 1 >= args.len) return error.Usage;
@@ -92,6 +94,8 @@ pub fn main(init: std.process.Init) !void {
             const eq = std.mem.indexOfScalar(u8, value, '=') orelse return error.Usage;
             const data = try cwd.readFileAlloc(io, value[eq + 1 ..], arena, .unlimited);
             try bins.append(arena, .{ .path = try std.fmt.allocPrint(arena, "bin/{s}", .{value[0..eq]}), .data = data });
+        } else if (std.mem.eql(u8, flag, "--libcxx-config")) {
+            libcxx_version = try libcxxVersion(arena, try cwd.readFileAlloc(io, value, arena, .unlimited));
         } else return error.Usage;
     }
     std.mem.sortUnstable(File, files.items, {}, File.lessThan);
@@ -132,6 +136,7 @@ pub fn main(init: std.process.Init) !void {
     try std.json.Stringify.value(manifest, .{ .whitespace = .indent_2 }, &manifest_json.writer);
     try manifest_json.writer.writeByte('\n');
     try files.append(arena, .{ .path = "MANIFEST.json", .data = manifest_json.written() });
+    try files.append(arena, .{ .path = sbom_file, .data = try sbom(arena, spec, name, recipe, libcxx_version) });
     std.mem.sortUnstable(File, files.items, {}, File.lessThan);
 
     var out_dir = try cwd.openDir(io, out_path, .{});
@@ -149,10 +154,110 @@ pub fn main(init: std.process.Init) !void {
         spec.ffmpeg_version, spec.bundle_rev, spec.variant, spec.suffix,
     });
     for (files.items) |f| {
-        if (std.mem.startsWith(u8, f.path, "licenses/") or std.mem.eql(u8, f.path, "MANIFEST.json")) try bins.append(arena, f);
+        const shared = std.mem.startsWith(u8, f.path, "licenses/") or std.mem.eql(u8, f.path, "MANIFEST.json") or std.mem.eql(u8, f.path, sbom_file);
+        if (shared) try bins.append(arena, f);
     }
     std.mem.sortUnstable(File, bins.items, {}, File.lessThan);
     try writeArchive(io, arena, out_dir, programs_name, bins.items);
+}
+
+const sbom_file = "sbom.cdx.json";
+
+const Property = struct { name: []const u8, value: []const u8 };
+const LicenseChoice = struct { expression: []const u8 };
+const ExternalReference = struct { type: []const u8, url: []const u8 };
+
+const Component = struct {
+    type: []const u8 = "library",
+    @"bom-ref": []const u8,
+    name: []const u8,
+    version: []const u8,
+    licenses: []const LicenseChoice,
+    externalReferences: ?[]const ExternalReference = null,
+    properties: ?[]const Property = null,
+};
+
+const Bom = struct {
+    bomFormat: []const u8 = "CycloneDX",
+    specVersion: []const u8 = "1.6",
+    version: u32 = 1,
+    metadata: struct { component: Component },
+    components: []const Component,
+    dependencies: []const Dependency,
+};
+
+const Dependency = struct { ref: []const u8, dependsOn: []const []const u8 };
+
+/// A CycloneDX SBOM of every source compiled into the bundle. It has no timestamp or serial
+/// number, so equal bundles get equal SBOMs.
+fn sbom(arena: std.mem.Allocator, spec: Spec, name: []const u8, recipe: []const u8, libcxx_version: ?[]const u8) ![]const u8 {
+    var components: std.ArrayList(Component) = .empty;
+    var refs: std.ArrayList([]const u8) = .empty;
+    for (spec.sources) |s| {
+        const refs_out = try arena.alloc(ExternalReference, 1);
+        refs_out[0] = .{ .type = "distribution", .url = s.url };
+        const props = try arena.alloc(Property, 1);
+        props[0] = .{ .name = "ffmpeg-hermetic:zig-hash", .value = s.zig_hash };
+        try components.append(arena, .{
+            .@"bom-ref" = s.name,
+            .name = s.name,
+            .version = s.version,
+            .licenses = try licenseChoice(arena, s.license),
+            .externalReferences = refs_out,
+            .properties = props,
+        });
+    }
+    if (libcxx_version) |version| for ([_][]const u8{ "libc++", "libc++abi" }) |runtime| {
+        const props = try arena.alloc(Property, 1);
+        props[0] = .{ .name = "ffmpeg-hermetic:source", .value = try std.fmt.allocPrint(arena, "zig {s}", .{spec.zig}) };
+        try components.append(arena, .{
+            .@"bom-ref" = runtime,
+            .name = runtime,
+            .version = version,
+            .licenses = try licenseChoice(arena, "Apache-2.0 WITH LLVM-exception"),
+            .properties = props,
+        });
+    };
+    for (components.items) |comp| try refs.append(arena, comp.@"bom-ref");
+
+    const props = try arena.alloc(Property, 4);
+    props[0] = .{ .name = "ffmpeg-hermetic:bundle", .value = name };
+    props[1] = .{ .name = "ffmpeg-hermetic:recipe", .value = recipe };
+    props[2] = .{ .name = "ffmpeg-hermetic:variant", .value = spec.variant };
+    props[3] = .{ .name = "ffmpeg-hermetic:target", .value = spec.target };
+    const root = "ffmpeg-hermetic";
+    const deps = try arena.alloc(Dependency, 1);
+    deps[0] = .{ .ref = root, .dependsOn = refs.items };
+    const bom: Bom = .{
+        .metadata = .{ .component = .{
+            .@"bom-ref" = root,
+            .name = root,
+            .version = try std.fmt.allocPrint(arena, "{s}-r{d}", .{ spec.ffmpeg_version, spec.bundle_rev }),
+            .licenses = try licenseChoice(arena, spec.sources[0].license),
+            .properties = props,
+        } },
+        .components = components.items,
+        .dependencies = deps,
+    };
+    var out: Io.Writer.Allocating = .init(arena);
+    try std.json.Stringify.value(bom, .{ .whitespace = .indent_2, .emit_null_optional_fields = false }, &out.writer);
+    try out.writer.writeByte('\n');
+    return out.written();
+}
+
+/// `22.1.8` from libc++'s `#  define _LIBCPP_VERSION 220108`.
+fn libcxxVersion(arena: std.mem.Allocator, config: []const u8) ![]const u8 {
+    const key = "define _LIBCPP_VERSION ";
+    const at = std.mem.indexOf(u8, config, key) orelse return error.NoLibcxxVersion;
+    const rest = config[at + key.len ..];
+    const n = try std.fmt.parseInt(u32, rest[0 .. std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len], 10);
+    return std.fmt.allocPrint(arena, "{d}.{d}.{d}", .{ n / 10000, n / 100 % 100, n % 100 });
+}
+
+fn licenseChoice(arena: std.mem.Allocator, expression: []const u8) ![]const LicenseChoice {
+    const out = try arena.alloc(LicenseChoice, 1);
+    out[0] = .{ .expression = expression };
+    return out;
 }
 
 /// Writes `<name>.tar.zst`, every file under a top directory `<name>`, and its `.sha256`.

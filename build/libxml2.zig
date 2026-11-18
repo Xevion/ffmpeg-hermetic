@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libxml2",
     .version = "2.15.4",
     .licenses = &.{"Copyright"},
+    .spdx = "MIT",
     .ffmpeg = &.{"libxml2"},
     .ffmpeg_windows_defines = &.{"LIBXML_STATIC"},
     .ffmpeg_include_subdirs = &.{"libxml2"},

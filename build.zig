@@ -187,6 +187,6 @@ pub fn build(b: *std.Build) void {
         }
         const ff = ffmpeg.build(c, nasm, deps.items, .{ .libraries = enabled.items, .probes = probes.items, .version3 = version3, .programs = programs, .version = ffmpeg_version });
         for (ff.libs) |artifact| b.installArtifact(artifact);
-        if (ff.libs.len > 0) bundle.add(c, ffmpeg_version, deps.items, ff.libs, ff.programs);
+        if (ff.libs.len > 0) bundle.add(c, ffmpeg_version, version3, deps.items, ff.libs, ff.programs);
     }
 }

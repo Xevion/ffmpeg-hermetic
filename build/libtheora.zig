@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libtheora",
     .version = "1.2.0",
     .licenses = &.{ "COPYING", "LICENSE" },
+    .spdx = "BSD-3-Clause",
     .needs = &.{"libogg"},
     .ffmpeg = &.{"libtheora"},
 };

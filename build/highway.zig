@@ -6,6 +6,7 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "highway",
     .version = "1.4.0",
+    .spdx = "Apache-2.0 OR BSD-3-Clause",
     .licenses = &.{"LICENSE"},
 };
 

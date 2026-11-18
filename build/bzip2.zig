@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "bzip2",
     .version = "1.0.8",
     .licenses = &.{"LICENSE"},
+    .spdx = "bzip2-1.0.6",
     .ffmpeg = &.{"bzlib"},
 };
 

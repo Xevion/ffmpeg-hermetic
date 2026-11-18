@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libvorbis",
     .version = "1.3.7",
     .licenses = &.{"COPYING"},
+    .spdx = "BSD-3-Clause",
     .needs = &.{"libogg"},
     .ffmpeg = &.{"libvorbis"},
     .ffmpeg_probes = &.{"libvorbisenc"},

@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "dav1d",
     .version = "1.5.4",
     .licenses = &.{"COPYING"},
+    .spdx = "BSD-2-Clause",
     .ffmpeg = &.{"libdav1d"},
     .system_libs = .{ .linux = &.{ "pthread", "dl" } },
 };

@@ -15,6 +15,8 @@ zon: []const u8 = "",
 version: []const u8,
 /// License files in the source tree, copied into a bundle.
 licenses: []const []const u8 = &.{},
+/// SPDX license expression of the code this library compiles, as its source headers state it.
+spdx: []const u8,
 /// Further pinned sources compiled into this library.
 extra_sources: []const Extra = &.{},
 /// Libraries built first, whose installed headers this one compiles against and whose archives it
@@ -67,6 +69,7 @@ pub const Extra = struct {
     zon: []const u8,
     version: []const u8,
     licenses: []const []const u8 = &.{},
+    spdx: []const u8,
 };
 
 /// A pinned upstream tarball, as a bundle's MANIFEST records it.
@@ -77,6 +80,7 @@ pub const Source = struct {
     url: []const u8,
     hash: []const u8,
     licenses: []const []const u8,
+    spdx: []const u8,
 };
 
 /// A library that was built: its metadata, its pins and what it produced.
@@ -133,21 +137,21 @@ fn dashed(comptime name: []const u8) []const u8 {
     }
 }
 
-fn source(comptime zon: []const u8, comptime version: []const u8, comptime licenses: []const []const u8) Source {
+fn source(comptime zon: []const u8, comptime version: []const u8, comptime licenses: []const []const u8, comptime spdx: []const u8) Source {
     const pin = @field(pins.dependencies, zon);
     comptime if (std.mem.indexOf(u8, pin.url, version) == null) {
         @compileError("build.zig.zon pins " ++ zon ++ " at a URL that does not contain " ++ version);
     };
-    return .{ .zon = zon, .name = dashed(zon), .version = version, .url = pin.url, .hash = pin.hash, .licenses = licenses };
+    return .{ .zon = zon, .name = dashed(zon), .version = version, .url = pin.url, .hash = pin.hash, .licenses = licenses, .spdx = spdx };
 }
 
 /// The pins of `m`: its own source first, then `extra_sources`. A version missing from a pin's URL is a compile error.
 pub fn sources(comptime m: Meta) []const Source {
     comptime {
         var out: [1 + m.extra_sources.len]Source = undefined;
-        out[0] = source(m.zonName(), m.version, m.licenses);
+        out[0] = source(m.zonName(), m.version, m.licenses, m.spdx);
         out[0].name = dashed(m.name);
-        for (m.extra_sources, out[1..]) |extra, *slot| slot.* = source(extra.zon, extra.version, extra.licenses);
+        for (m.extra_sources, out[1..]) |extra, *slot| slot.* = source(extra.zon, extra.version, extra.licenses, extra.spdx);
         const done = out;
         return &done;
     }

@@ -7,6 +7,7 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "nv_codec_headers",
     .version = "n12.1.14.0",
+    .spdx = "MIT",
     .ffmpeg = &.{ "ffnvcodec", "nvenc", "nvdec", "cuvid", "cuda_llvm" },
     .ffmpeg_probes = &.{ "cuda", "NV_ENC_PIC_PARAMS_AV1", "CUVIDAV1PICPARAMS" },
     .supports = Meta.support.linuxOrWindows,

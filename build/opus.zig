@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "opus",
     .version = "1.6.1",
     .licenses = &.{"COPYING"},
+    .spdx = "BSD-3-Clause",
     .ffmpeg = &.{"libopus"},
     .ffmpeg_include_subdirs = &.{"opus"},
     .system_libs = .{ .linux = &.{"m"} },

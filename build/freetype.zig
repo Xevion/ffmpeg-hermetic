@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "freetype",
     .version = "2.15.0",
     .licenses = &.{ "LICENSE.TXT", "docs/FTL.TXT", "docs/GPLv2.TXT" },
+    .spdx = "FTL OR GPL-2.0-or-later",
     .ffmpeg = &.{"libfreetype"},
     .ffmpeg_include_subdirs = &.{"freetype2"},
 };

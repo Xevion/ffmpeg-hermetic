@@ -90,12 +90,13 @@ The `bundle` step packs a directory and a matching `.tar.zst` containing:
 - every static archive
 - FFmpeg's headers
 - `MANIFEST.json`: the link order (FFmpeg's libraries, then dependencies in topological order,
-  then the C++ runtime and system libraries), plus the version, URL and Zig package hash of every
-  source
+  then the C++ runtime and system libraries), plus the version, URL, Zig package hash and SPDX
+  license of every source
+- `sbom.cdx.json`: the same sources, and the C++ runtime, as a [CycloneDX] 1.6 SBOM
 - license files for everything that ships
 
-With `-Dprograms`, the step also packs `ffmpeg` and `ffprobe` with the same manifest and licenses
-into a second archive, `ffmpeg-hermetic-<version>-r<N>-programs-<variant>-<platform>.tar.zst`.
+With `-Dprograms`, the step also packs `ffmpeg` and `ffprobe` with the same manifest, SBOM and
+licenses into a second archive, `ffmpeg-hermetic-<version>-r<N>-programs-<variant>-<platform>.tar.zst`.
 The programs are statically linked; on Linux they need only glibc.
 
 `bundle-check` links a C program against the bundle in exactly the manifest's order, with no
@@ -143,6 +144,7 @@ combined license of a build, as FFmpeg's configure reports it, is:
 
 Bundles include the license files of every shipped library.
 
+[CycloneDX]: https://cyclonedx.org/
 [FFmpeg]: https://ffmpeg.org/
 [FATE]: https://fate.ffmpeg.org/
 [Zig]: https://ziglang.org/

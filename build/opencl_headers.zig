@@ -7,6 +7,7 @@ const Meta = @import("Meta.zig");
 pub const meta: Meta = .{
     .name = "opencl_headers",
     .version = "2026.05.29",
+    .spdx = "Apache-2.0",
     .licenses = &.{"LICENSE"},
 };
 

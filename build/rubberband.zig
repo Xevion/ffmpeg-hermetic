@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "rubberband",
     .version = "4.0.0",
     .licenses = &.{"COPYING"},
+    .spdx = "GPL-2.0-or-later",
     .ffmpeg = &.{"librubberband"},
     .license = .gpl,
     .system_libs = .{ .linux = &.{ "m", "pthread" } },

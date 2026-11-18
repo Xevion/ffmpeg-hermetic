@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libvmaf",
     .version = "3.2.1",
     .licenses = &.{"LICENSE"},
+    .spdx = "BSD-2-Clause-Patent",
     .ffmpeg = &.{"libvmaf"},
     .ffmpeg_include_subdirs = &.{"libvmaf"},
     .supports = Meta.support.notMsvc,

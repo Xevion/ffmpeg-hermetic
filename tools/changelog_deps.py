@@ -29,12 +29,18 @@ def manifest(path: pathlib.Path) -> dict:
 
 def sources(paths: list[str]) -> dict[str, dict]:
     merged: dict[str, dict] = {}
+    by_variant: dict[str, dict[str, str]] = {}
     for p in paths:
-        for s in manifest(pathlib.Path(p))["sources"]:
+        m = manifest(pathlib.Path(p))
+        for s in m["sources"]:
             seen = merged.get(s["name"])
             if seen and seen["version"] != s["version"]:
                 sys.exit(f"{s['name']}: {seen['version']} and {s['version']} in one set")
             merged[s["name"]] = s
+            by_variant.setdefault(s["name"], {})[m["variant"]] = s["license"]
+    for name, licenses in by_variant.items():
+        if len(set(licenses.values())) > 1:
+            merged[name] = merged[name] | {"license": ", ".join(f"{v}: {lic}" for v, lic in sorted(licenses.items(), reverse=True))}
     return merged
 
 
@@ -46,9 +52,9 @@ def main() -> None:
     new = sources(args.new)
 
     if not args.old:
-        print("| Library | Version |\n| --- | --- |")
+        print("| Library | Version | License |\n| --- | --- | --- |")
         for name in sorted(new, key=str.lower):
-            print(f"| {name} | {new[name]['version']} |")
+            print(f"| {name} | {new[name]['version']} | {new[name]['license']} |")
         return
 
     old = sources(args.old)
@@ -62,7 +68,12 @@ def main() -> None:
         "Rebuilt from a different source": [
             f"- {n} {new[n]['version']}"
             for n in sorted(new.keys() & old.keys(), key=str.lower)
-            if old[n]["version"] == new[n]["version"] and old[n]["sha256"] != new[n]["sha256"]
+            if old[n]["version"] == new[n]["version"] and old[n]["zig_hash"] != new[n]["zig_hash"]
+        ],
+        "License changed": [
+            f"- {n}: {old[n]['license']} -> {new[n]['license']}"
+            for n in sorted(new.keys() & old.keys(), key=str.lower)
+            if old[n]["license"] != new[n]["license"]
         ],
         "Removed": [f"- {n}" for n in sorted(old.keys() - new.keys(), key=str.lower)],
     }

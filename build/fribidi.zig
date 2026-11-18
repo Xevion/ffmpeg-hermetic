@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "fribidi",
     .version = "1.0.18",
     .licenses = &.{"COPYING"},
+    .spdx = "LGPL-2.1-or-later",
     .ffmpeg = &.{"libfribidi"},
     .ffmpeg_windows_defines = &.{"FRIBIDI_LIB_STATIC"},
     .ffmpeg_include_subdirs = &.{"fribidi"},

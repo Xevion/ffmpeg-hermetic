@@ -8,6 +8,7 @@ pub const meta: Meta = .{
     .name = "libva",
     .version = "2.24.1",
     .licenses = &.{"COPYING"},
+    .spdx = "MIT",
     .needs = &.{"libdrm"},
     .ffmpeg = &.{"vaapi"},
     .ffmpeg_probes = &.{

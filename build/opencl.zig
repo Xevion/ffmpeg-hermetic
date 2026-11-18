@@ -9,6 +9,7 @@ pub const meta: Meta = .{
     .zon = "opencl_icd_loader",
     .version = "2026.05.29",
     .licenses = &.{"LICENSE"},
+    .spdx = "Apache-2.0",
     .needs = &.{"opencl_headers"},
     .ffmpeg = &.{"opencl"},
     .system_libs = .{ .linux = &.{ "pthread", "dl" }, .windows = &.{ "cfgmgr32", "ole32", "advapi32" } },

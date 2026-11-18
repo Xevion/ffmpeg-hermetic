@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "vidstab",
     .version = "1.1.2",
     .licenses = &.{"LICENSE"},
+    .spdx = "GPL-2.0-or-later",
     .ffmpeg = &.{"libvidstab"},
     .license = .gpl,
     .ffmpeg_windows_defines = &.{"VIDSTAB_EXPORTS"},

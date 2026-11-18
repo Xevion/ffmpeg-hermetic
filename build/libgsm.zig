@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "libgsm",
     .version = "1.0.24",
     .licenses = &.{"COPYRIGHT"},
+    .spdx = "TU-Berlin-2.0",
     .ffmpeg = &.{"libgsm"},
     .ffmpeg_probes = &.{"gsm_h"},
 };

@@ -7,6 +7,7 @@ pub const meta: Meta = .{
     .name = "svt_av1",
     .version = "3.1.2",
     .licenses = &.{ "LICENSE-BSD2.md", "LICENSE.md", "PATENTS.md" },
+    .spdx = "BSD-3-Clause-Clear AND BSD-2-Clause",
     .ffmpeg = &.{"libsvtav1"},
     .ffmpeg_include_subdirs = &.{"svt-av1"},
     .system_libs = .{ .linux = &.{ "m", "pthread" } },

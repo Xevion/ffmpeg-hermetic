@@ -1,5 +1,5 @@
 //! The `bundle` step: libc++ and libc++abi built from zig's bundled sources, then every archive,
-//! FFmpeg's headers and a MANIFEST.json packed into a bundle directory and `.tar.zst`.
+//! FFmpeg's headers, MANIFEST.json and an SBOM packed into a bundle directory and `.tar.zst`.
 const std = @import("std");
 const builtin = @import("builtin");
 const Ctx = @import("Ctx.zig");
@@ -10,7 +10,7 @@ const config = @import("ffmpeg/config.zig");
 const Compile = std.Build.Step.Compile;
 
 const Link = struct { name: []const u8, kind: []const u8 };
-const SourceEntry = struct { name: []const u8, version: []const u8, sha256: []const u8, url: []const u8 };
+const SourceEntry = struct { name: []const u8, version: []const u8, url: []const u8, zig_hash: []const u8, license: []const u8 };
 
 const Spec = struct {
     variant: []const u8,
@@ -36,7 +36,7 @@ const Node = struct {
 /// Adds the `bundle` and `bundle-check` steps. `built` is every library that was built, in
 /// registry order, and `ffmpeg` the FFmpeg libraries whose installed headers become the bundle's
 /// include directory. `programs` (ffmpeg, ffprobe) go into a second archive beside the bundle.
-pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []const *Compile, programs: []const *Compile) void {
+pub fn add(c: Ctx, version: ff.Version, version3: bool, built: []const Meta.Built, ffmpeg: []const *Compile, programs: []const *Compile) void {
     const b = c.b;
     const t = c.target.result;
     const platform = Platform.of(b, t);
@@ -64,6 +64,7 @@ pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []con
 
     var sources: std.ArrayList(Meta.Source) = .empty;
     sources.appendSlice(b.allocator, ff.sources(version)) catch @panic("OOM");
+    sources.items[0].spdx = ffmpegLicense(c.gpl, version3);
     for (built) |lib| {
         if (bundledArchives(lib) == 0 and lib.output.archives.len > 0) continue;
         sources.appendSlice(b.allocator, lib.sources) catch @panic("OOM");
@@ -119,6 +120,10 @@ pub fn add(c: Ctx, version: ff.Version, built: []const Meta.Built, ffmpeg: []con
         run.addArg("--license");
         run.addPrefixedFileArg(b.fmt("{s}=", .{dir}), std.Build.LazyPath.zig_lib.path(b, b.fmt("{s}/LICENSE.TXT", .{dir})));
     };
+    if (needs_cxx) {
+        run.addArg("--libcxx-config");
+        run.addFileArg(std.Build.LazyPath.zig_lib.path(b, "libcxx/include/__config"));
+    }
 
     const install = b.addInstallDirectory(.{ .source_dir = out, .install_dir = .prefix, .install_subdir = "bundle" });
     b.step("bundle", "Pack every archive, FFmpeg's headers and MANIFEST.json into <prefix>/bundle").dependOn(&install.step);
@@ -296,8 +301,14 @@ fn inList(list: []const []const u8, name: []const u8) bool {
 
 fn sourceList(b: *std.Build, sources: []const Meta.Source) []const SourceEntry {
     const out = b.allocator.alloc(SourceEntry, sources.len) catch @panic("OOM");
-    for (out, sources) |*entry, s| entry.* = .{ .name = s.name, .version = s.version, .sha256 = s.hash, .url = s.url };
+    for (out, sources) |*entry, s| entry.* = .{ .name = s.name, .version = s.version, .url = s.url, .zig_hash = s.hash, .license = s.spdx };
     return out;
+}
+
+/// The license configure reports for FFmpeg built with these flags.
+fn ffmpegLicense(gpl: bool, version3: bool) []const u8 {
+    if (gpl) return if (version3) "GPL-3.0-or-later" else "GPL-2.0-or-later";
+    return if (version3) "LGPL-3.0-or-later" else "LGPL-2.1-or-later";
 }
 
 fn zstdLibrary(b: *std.Build, zstd: *std.Build.Dependency) *Compile {
