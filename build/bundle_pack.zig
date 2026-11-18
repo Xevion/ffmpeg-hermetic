@@ -383,8 +383,9 @@ const ar_header_len = 60;
 const ArMember = struct { name: []const u8, data: []const u8 };
 
 /// Rewrites a GNU archive so it depends only on its objects: member names lose their build-cache
-/// directory, and ownership, mode and timestamps are fixed. The symbol table, and the second
-/// linker member COFF archives carry after it, are rebuilt for the new member offsets.
+/// directory, ownership, mode and timestamps are fixed, and COFF objects lose their compile time.
+/// The symbol table, and the second linker member COFF archives carry after it, are rebuilt for
+/// the new member offsets.
 fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]const u8 {
     if (!std.mem.startsWith(u8, input, ar_magic)) return error.NotAnArchive;
     // Darwin's BSD archives from zig already hold bare member names and zeroed metadata.
@@ -414,7 +415,7 @@ fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]const u8 {
                 name = long_names[start..end];
             }
             name = std.mem.trimEnd(u8, name, "/");
-            try members.append(arena, .{ .name = std.fs.path.basename(name), .data = body });
+            try members.append(arena, .{ .name = std.fs.path.basename(name), .data = try zeroCoffTimestamp(arena, body) });
             try offsets.append(arena, pos);
         }
         pos += ar_header_len + size + (size & 1);
@@ -471,6 +472,20 @@ fn normalizeArchive(arena: std.mem.Allocator, input: []const u8) ![]const u8 {
     if (names_table.items.len > 0) try writeArMember(arena, &out, "//", names_table.items);
     for (members.items, refs) |m, ref| try writeArMember(arena, &out, ref, m.data);
     return out.items;
+}
+
+/// clang stamps the compile time into COFF objects for msvc targets; anything else is returned as is.
+fn zeroCoffTimestamp(arena: std.mem.Allocator, object: []const u8) ![]const u8 {
+    if (object.len < 20) return object;
+    // Big-object and import headers start with 0x0000 0xFFFF and keep the stamp at offset 8.
+    const at: usize = if (std.mem.eql(u8, object[0..4], "\x00\x00\xff\xff")) 8 else switch (std.mem.readInt(u16, object[0..2], .little)) {
+        0x8664, 0xaa64, 0x14c, 0x1c4 => 4,
+        else => return object,
+    };
+    if (std.mem.allEqual(u8, object[at..][0..4], 0)) return object;
+    const out = try arena.dupe(u8, object);
+    @memset(out[at..][0..4], 0);
+    return out;
 }
 
 fn writeArMember(arena: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8, data: []const u8) !void {

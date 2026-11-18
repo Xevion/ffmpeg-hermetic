@@ -47,7 +47,7 @@ jobs:
           - { os: ubuntu-24.04, target: x86_64-macos, oracle: x86_64-macos, variant: gpl }
           - { os: ubuntu-24.04, target: aarch64-macos, oracle: aarch64-macos, variant: lgpl }
           - { os: ubuntu-24.04, target: aarch64-macos, oracle: aarch64-macos, variant: gpl }
-          - { os: windows-2025, target: x86_64-windows-msvc, oracle: x86_64-windows-msvc, variant: lgpl }
+          - { os: windows-2025, target: x86_64-windows-msvc, oracle: x86_64-windows-msvc, variant: lgpl, reproduce: true }
           - { os: windows-2025, target: x86_64-windows-msvc, oracle: x86_64-windows-msvc, variant: gpl }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
